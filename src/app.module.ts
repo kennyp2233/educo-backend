@@ -7,6 +7,10 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UsuariosModule } from './users/users.module';
 import { Auth0Module } from './auth0/auth0.module';
 import { JwtStrategy } from './auth0/strategies/jwt.strategy';
+import { InstitucionModule } from './institucion/institucion.module';
+import { RecaudacionModule } from './recaudacion/recaudacion.module';
+import { CarnetModule } from './carnet/carnet.module';
+import { NotificacionModule } from './notificacion/notificacion.module';
 
 @Module({
   imports: [
@@ -17,6 +21,10 @@ import { JwtStrategy } from './auth0/strategies/jwt.strategy';
     PrismaModule,
     UsuariosModule,
     Auth0Module,
+    InstitucionModule,
+    RecaudacionModule,
+    CarnetModule,
+    NotificacionModule,
   ],
   providers: [JwtStrategy],
 })
