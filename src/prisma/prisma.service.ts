@@ -51,6 +51,16 @@ export class PrismaService extends PrismaClient<
     }
 
     /**
+     * Ejecuta una transacción con callback personalizado
+     * @param callback Función a ejecutar dentro de la transacción
+     */
+    async executeTransaction<T>(callback: (prisma: Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">) => Promise<T>): Promise<T> {
+        return this.$transaction(async (prisma) => {
+            return callback(prisma);
+        });
+    }
+
+    /**
      * Helper para limpiar la base de datos en tests
      */
     async cleanDatabase() {

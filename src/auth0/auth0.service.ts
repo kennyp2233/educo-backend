@@ -1,11 +1,11 @@
 // src/auth0/auth0.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { UsuariosService } from '../users/users.service';
+import { UsuariosService, Auth0UserData } from '../users/users.service';
 
 @Injectable()
 export class Auth0Service {
@@ -14,6 +14,13 @@ export class Auth0Service {
   private readonly domain: string;
   private readonly clientId: string;
   private readonly clientSecret: string;
+  private readonly mapeoRoles: { [key: string]: number } = {
+    'admin': 1,
+    'padre': 2,
+    'estudiante': 3,
+    'profesor': 4,
+    'tesorero': 5,
+  };
 
   constructor(
     private configService: ConfigService,
@@ -25,6 +32,23 @@ export class Auth0Service {
     this.clientId = this.configService.get<string>('AUTH0_CLIENT_ID');
     this.clientSecret = this.configService.get<string>('AUTH0_CLIENT_SECRET');
     this.apiUrl = `https://${this.domain}/api/v2`;
+
+    // Inicializar mapeo de roles
+    this.inicializarMapeoRoles();
+  }
+
+  /**
+   * Inicializa el mapeo de roles auth0 a IDs locales
+   */
+  private async inicializarMapeoRoles(): Promise<void> {
+    try {
+      const roles = await this.usuariosService.obtenerRoles();
+      roles.forEach(rol => {
+        this.mapeoRoles[rol.nombre.toLowerCase()] = rol.id;
+      });
+    } catch (error) {
+      this.logger.error('Error al inicializar mapeo de roles', error.stack);
+    }
   }
 
   /**
@@ -71,14 +95,30 @@ export class Auth0Service {
       const userInfo = await this.getUserInfo(tokenData.access_token);
       const roles = await this.getUserRoles(userInfo.sub);
 
-      // Verificar si el usuario ya existe en nuestra base de datos
-      let usuario = await this.prisma.usuario.findUnique({
-        where: { auth0Id: userInfo.sub },
-      });
+      // Sincronizar usuario con la base de datos local
+      const userData: Auth0UserData = {
+        auth0Id: userInfo.sub,
+        email: userInfo.email,
+        nombre: userInfo.name,
+        fotoPerfil: userInfo.picture
+      };
 
-      // Si no existe, lo creamos
+      // Buscar o crear usuario en la base de datos local
+      let usuario = await this.usuariosService.buscarPorAuth0Id(userInfo.sub);
+
       if (!usuario) {
+        // Si el usuario no existe localmente, lo creamos
         usuario = await this.usuariosService.crearUsuario(userInfo.sub);
+
+        // Asignar roles en base de datos local
+        if (roles && roles.length > 0) {
+          for (const role of roles) {
+            const rolId = await this.getRolIdFromName(role.name);
+            if (rolId) {
+              await this.usuariosService.asignarRol(usuario.id, rolId);
+            }
+          }
+        }
       }
 
       return {
@@ -163,11 +203,13 @@ export class Auth0Service {
   }
 
   /**
-   * Asigna un rol a un usuario.
+   * Asigna un rol a un usuario en Auth0 y en la base de datos local
    */
-  async assignRoleToUser(userId: string, roleId: string): Promise<void> {
+  async assignRoleToUser(userId: string, roleId: string, roleName: string): Promise<void> {
     try {
       const token = await this.getManagementApiToken();
+
+      // Asignar rol en Auth0
       await firstValueFrom(
         this.httpService.post(
           `${this.apiUrl}/users/${userId}/roles`,
@@ -180,6 +222,15 @@ export class Auth0Service {
           }
         )
       );
+
+      // Sincronizar con la base de datos local
+      const usuario = await this.usuariosService.buscarPorAuth0Id(userId);
+      if (usuario) {
+        const rolId = await this.getRolIdFromName(roleName);
+        await this.usuariosService.asignarRol(usuario.id, rolId);
+      } else {
+        this.logger.warn(`No se pudo sincronizar rol para usuario ${userId}: Usuario no encontrado en BD local`);
+      }
     } catch (error) {
       this.logger.error(`Error al asignar rol al usuario: ${error.message}`);
       throw new Error('Error al asignar el rol al usuario');
@@ -187,9 +238,9 @@ export class Auth0Service {
   }
 
   /**
-   * Registra un nuevo usuario y asigna un rol.
+   * Registra un nuevo usuario y asigna un rol, sincronizando con la base de datos local.
    */
-  async registerUser(email: string, password: string, role: string, fullName: string): Promise<any> {
+  async registerUser(email: string, password: string, role: string, fullName: string, perfilData?: any): Promise<any> {
     try {
       const token = await this.getManagementApiToken();
       const availableRoles = await this.getAvailableRoles();
@@ -197,7 +248,7 @@ export class Auth0Service {
       const targetRole = availableRoles.find(
         (r) => r.name.toLowerCase() === role.toLowerCase()
       );
-      
+
       if (!targetRole) {
         throw new Error(
           `El rol '${role}' no es válido. Roles disponibles: ${availableRoles
@@ -206,6 +257,7 @@ export class Auth0Service {
         );
       }
 
+      // 1. Crear usuario en Auth0
       const createUserResponse = await firstValueFrom(
         this.httpService.post(
           `${this.apiUrl}/users`,
@@ -225,17 +277,39 @@ export class Auth0Service {
       );
 
       const newUser = createUserResponse.data;
-      await this.assignRoleToUser(newUser.user_id, targetRole.id);
 
-      // Crear usuario en nuestra base de datos
-      await this.usuariosService.crearUsuarioConRol(
-        newUser.user_id,
-        this.getRolIdFromName(role)
-      );
+      // 2. Asignar rol en Auth0
+      await this.assignRoleToUser(newUser.user_id, targetRole.id, targetRole.name);
 
-      return newUser;
+      // 3. Crear usuario en nuestra base de datos con perfil completo
+      let usuario;
+
+      if (perfilData) {
+        // Si se proporcionan datos de perfil, crear usuario completo con perfil
+        usuario = await this.usuariosService.crearUsuarioCompleto(
+          newUser.user_id,
+          role,
+          perfilData
+        );
+      } else {
+        // Si no hay datos de perfil, crear usuario básico con rol
+        const rolId = await this.getRolIdFromName(role);
+        usuario = await this.usuariosService.crearUsuarioConRol(
+          newUser.user_id,
+          rolId
+        );
+      }
+
+      return {
+        auth0User: newUser,
+        localUser: usuario
+      };
     } catch (error) {
       this.logger.error(`Error al registrar usuario: ${error.message}`);
+
+      // Si hay error, intentar limpiar el usuario en Auth0 si se creó
+      // Esta sería una implementación más robusta para evitar inconsistencias
+
       throw new Error(
         error.response?.data?.message || 'Error al registrar el usuario'
       );
@@ -268,19 +342,68 @@ export class Auth0Service {
   }
 
   /**
-   * Obtiene el ID del rol basado en su nombre.
-   * Nota: Esta es una implementación básica, deberías adaptar esto
-   * a tu estructura de base de datos real.
+   * Sincroniza un usuario de Auth0 con la base de datos local
    */
-  private getRolIdFromName(roleName: string): number {
-    const roleMap = {
-      'admin': 1,
-      'padre': 2,
-      'estudiante': 3,
-      'profesor': 4,
-      'tesorero': 5,
-    };
+  async sincronizarUsuario(auth0Id: string): Promise<any> {
+    try {
+      // 1. Obtener token de gestión
+      const token = await this.getManagementApiToken();
 
-    return roleMap[roleName.toLowerCase()] || 1; // Valor predeterminado si no se encuentra
+      // 2. Obtener información del usuario desde Auth0
+      const userResponse = await firstValueFrom(
+        this.httpService.get(`${this.apiUrl}/users/${auth0Id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+      );
+
+      const userData = userResponse.data;
+
+      // 3. Obtener roles del usuario
+      const roles = await this.getUserRoles(auth0Id);
+
+      // 4. Buscar o crear usuario en base de datos local
+      let usuario = await this.usuariosService.buscarPorAuth0Id(auth0Id);
+
+      if (!usuario) {
+        // Si no existe, crear usuario
+        usuario = await this.usuariosService.crearUsuario(auth0Id);
+      }
+
+      // 5. Sincronizar roles
+      for (const role of roles) {
+        const rolId = await this.getRolIdFromName(role.name);
+        await this.usuariosService.asignarRol(usuario.id, rolId);
+      }
+
+      return {
+        auth0User: userData,
+        localUser: usuario
+      };
+    } catch (error) {
+      this.logger.error(`Error al sincronizar usuario: ${error.message}`);
+      throw new Error('Error al sincronizar usuario con la base de datos local');
+    }
+  }
+
+  /**
+   * Obtiene el ID del rol basado en su nombre.
+   * Primero busca en la base de datos, si no lo encuentra usa el mapeo predefinido.
+   */
+  private async getRolIdFromName(roleName: string): Promise<number> {
+    try {
+      // Primero intentamos buscar el rol en la base de datos
+      const rol = await this.usuariosService.obtenerRolPorNombre(roleName);
+      if (rol) {
+        return rol.id;
+      }
+
+      // Si no lo encontramos, usamos el mapeo
+      return this.mapeoRoles[roleName.toLowerCase()] || 1;
+    } catch (error) {
+      this.logger.warn(`Error al buscar rol por nombre ${roleName}: ${error.message}`);
+      return this.mapeoRoles[roleName.toLowerCase()] || 1;
+    }
   }
 }
