@@ -16,6 +16,11 @@ model Usuario {
   profesor   Profesor?
   tesorero   Tesorero?
   notificaciones Notificacion[]
+  
+  // Nuevos campos para aprobaciones
+  estadoAprobacion EstadoAprobacion?
+  aprobacionesRealizadas EstadoAprobacion[] @relation("AprobadorUsuario")
+  permisosAprobados PermisoAcceso[] @relation("AprobadorPermiso")
 }
 
 model Rol {
@@ -50,6 +55,7 @@ model Curso {
   estudiantes    Estudiante[]
   profesorCurso  ProfesorCurso[]
   tesoreros      Tesorero[]
+  permisosAcceso PermisoAcceso[]
 }
 
 model Padre {
@@ -60,8 +66,8 @@ model Padre {
   hijos     PadreEstudiante[]
 
   Abono Abono[]
-
   PermisoTemporal PermisoTemporal[]
+  permisosAcceso PermisoAcceso[]
 }
 
 model Estudiante {
@@ -74,7 +80,6 @@ model Estudiante {
   carnet    Carnet?
 
   Abono Abono[]
-
   PermisoTemporal PermisoTemporal[]
 }
 
@@ -82,6 +87,9 @@ model PadreEstudiante {
   padreId      String
   estudianteId String
   esRepresentante Boolean
+  estadoVinculacion String @default("PENDIENTE") // Nuevo campo
+  aprobadorId  String?   // ID del tutor que aprobó la vinculación
+  fechaAprobacion DateTime?
   padre        Padre @relation(fields: [padreId], references: [usuarioId])
   estudiante   Estudiante @relation(fields: [estudianteId], references: [usuarioId])
   @@id([padreId, estudianteId])
@@ -98,6 +106,7 @@ model ProfesorCurso {
   profesorId String
   cursoId    Int
   esTutor    Boolean
+  puedeAprobarPermisos Boolean @default(false) // Nuevo campo
   profesor   Profesor @relation(fields: [profesorId], references: [usuarioId])
   curso      Curso @relation(fields: [cursoId], references: [id])
   @@id([profesorId, cursoId])
@@ -170,3 +179,34 @@ model Notificacion {
   usuarioReceptor    Usuario @relation(fields: [usuarioReceptorId], references: [id])
 }
 
+// Nuevos modelos para aprobaciones y permisos
+
+model EstadoAprobacion {
+  id              Int       @id @default(autoincrement())
+  usuarioId       String    @unique
+  usuario         Usuario   @relation(fields: [usuarioId], references: [id])
+  estadoActual    String    // "PENDIENTE", "APROBADO", "RECHAZADO"
+  aprobadorId     String?
+  aprobador       Usuario?  @relation("AprobadorUsuario", fields: [aprobadorId], references: [id])
+  fechaSolicitud  DateTime  @default(now())
+  fechaResolucion DateTime?
+  comentarios     String?
+}
+
+model PermisoAcceso {
+  id              Int       @id @default(autoincrement())
+  padreId         String
+  padre           Padre     @relation(fields: [padreId], references: [usuarioId])
+  cursoId         Int
+  curso           Curso     @relation(fields: [cursoId], references: [id])
+  tipoPermiso     String    // "REGULAR", "ESPECIFICO", "EMERGENCIA", "RECURRENTE"
+  motivo          String
+  fechaInicio     DateTime
+  fechaFin        DateTime
+  aprobadorId     String?
+  aprobador       Usuario?  @relation("AprobadorPermiso", fields: [aprobadorId], references: [id])
+  estadoPermiso   String    // "PENDIENTE", "APROBADO", "RECHAZADO", "UTILIZADO", "VENCIDO"
+  codigoQR        String?   @unique
+  fechaCreacion   DateTime  @default(now())
+  fechaAprobacion DateTime?
+}

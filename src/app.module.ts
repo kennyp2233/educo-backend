@@ -11,6 +11,8 @@ import { InstitucionModule } from './institucion/institucion.module';
 import { RecaudacionModule } from './recaudacion/recaudacion.module';
 import { CarnetModule } from './carnet/carnet.module';
 import { NotificacionModule } from './notificacion/notificacion.module';
+import { AprobacionesModule } from './aprobaciones/aprobaciones.module';
+import { PermisosAccesoModule } from './permisos/permisos.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { NotificacionModule } from './notificacion/notificacion.module';
     RecaudacionModule,
     CarnetModule,
     NotificacionModule,
+    AprobacionesModule,
+    PermisosAccesoModule,
   ],
   providers: [JwtStrategy],
 })

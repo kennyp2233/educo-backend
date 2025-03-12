@@ -372,4 +372,18 @@ export class UsuariosService {
             return usuario;
         });
     }
+    async obtenerRolesUsuario(usuarioId: string): Promise<string[]> {
+        const usuarioRoles = await this.prisma.usuarioRol.findMany({
+            where: { usuarioId },
+            include: {
+                rol: true
+            }
+        });
+
+        if (!usuarioRoles || usuarioRoles.length === 0) {
+            return [];
+        }
+
+        return usuarioRoles.map(ur => ur.rol.nombre);
+    }
 }
