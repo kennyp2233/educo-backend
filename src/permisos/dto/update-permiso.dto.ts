@@ -1,7 +1,7 @@
-// src/permisos/dto/update-permiso-acceso.dto.ts
+// src/permisos/dto/update-permiso.dto.ts
 import { PartialType } from '@nestjs/mapped-types';
 import { IsEnum, IsOptional } from 'class-validator';
-import { CreatePermisoAccesoDto } from './create-permiso-acceso.dto';
+import { CreatePermisoDto } from './create-permiso.dto';
 
 export enum EstadoPermiso {
     PENDIENTE = 'PENDIENTE',
@@ -11,8 +11,8 @@ export enum EstadoPermiso {
     VENCIDO = 'VENCIDO'
 }
 
-export class UpdatePermisoAccesoDto extends PartialType(CreatePermisoAccesoDto) {
+export class UpdatePermisoDto extends PartialType(CreatePermisoDto) {
     @IsOptional()
     @IsEnum(EstadoPermiso)
-    estadoPermiso?: EstadoPermiso;
+    estado?: EstadoPermiso;
 }

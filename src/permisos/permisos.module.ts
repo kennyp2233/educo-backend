@@ -1,7 +1,7 @@
 // src/permisos/permisos.module.ts
 import { Module } from '@nestjs/common';
-import { PermisosAccesoService } from './permisos.service';
-import { PermisosAccesoController } from './permisos.controller';
+import { PermisosService } from './permisos.service';
+import { PermisosController } from './permisos.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { NotificacionModule } from '../notificacion/notificacion.module';
 import { UsuariosModule } from '../users/users.module';
@@ -12,8 +12,8 @@ import { UsuariosModule } from '../users/users.module';
         NotificacionModule,
         UsuariosModule
     ],
-    controllers: [PermisosAccesoController],
-    providers: [PermisosAccesoService],
-    exports: [PermisosAccesoService]
+    controllers: [PermisosController],
+    providers: [PermisosService],
+    exports: [PermisosService]
 })
-export class PermisosAccesoModule { }
+export class PermisosModule { }

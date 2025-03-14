@@ -2,13 +2,13 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificacionService } from '../notificacion/notificacion.service';
-import { CreatePermisoAccesoDto, TipoPermiso } from './dto/create-permiso-acceso.dto';
-import { UpdatePermisoAccesoDto, EstadoPermiso } from './dto/update-permiso-acceso.dto';
+import { CreatePermisoDto, TipoPermiso } from './dto/create-permiso.dto';
+import { UpdatePermisoDto, EstadoPermiso } from './dto/update-permiso.dto';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
-export class PermisosAccesoService {
-    private readonly logger = new Logger(PermisosAccesoService.name);
+export class PermisosService {
+    private readonly logger = new Logger(PermisosService.name);
 
     constructor(
         private prisma: PrismaService,
@@ -16,10 +16,10 @@ export class PermisosAccesoService {
     ) { }
 
     /**
-     * Obtiene todos los permisos de acceso
+     * Obtiene todos los permisos
      */
     async findAll() {
-        return this.prisma.permisoAcceso.findMany({
+        return this.prisma.permiso.findMany({
             include: {
                 padre: {
                     include: {
@@ -27,6 +27,26 @@ export class PermisosAccesoService {
                     }
                 },
                 curso: true,
+                estudiante: true,
+                aprobador: true
+            }
+        });
+    }
+
+    /**
+     * Obtiene los permisos por tipo (acceso o evento)
+     */
+    async findByTipo(tipoPermiso: string) {
+        return this.prisma.permiso.findMany({
+            where: { tipoPermiso },
+            include: {
+                padre: {
+                    include: {
+                        usuario: true
+                    }
+                },
+                curso: true,
+                estudiante: true,
                 aprobador: true
             }
         });
@@ -36,9 +56,31 @@ export class PermisosAccesoService {
      * Obtiene los permisos de un padre específico
      */
     async findByPadre(padreId: string) {
-        return this.prisma.permisoAcceso.findMany({
+        return this.prisma.permiso.findMany({
             where: { padreId },
             include: {
+                curso: true,
+                estudiante: true,
+                aprobador: true
+            },
+            orderBy: {
+                fechaCreacion: 'desc'
+            }
+        });
+    }
+
+    /**
+     * Obtiene los permisos de un estudiante específico
+     */
+    async findByEstudiante(estudianteId: string) {
+        return this.prisma.permiso.findMany({
+            where: { estudianteId },
+            include: {
+                padre: {
+                    include: {
+                        usuario: true
+                    }
+                },
                 curso: true,
                 aprobador: true
             },
@@ -52,7 +94,7 @@ export class PermisosAccesoService {
      * Obtiene los permisos de un curso específico
      */
     async findByCurso(cursoId: number) {
-        return this.prisma.permisoAcceso.findMany({
+        return this.prisma.permiso.findMany({
             where: { cursoId },
             include: {
                 padre: {
@@ -60,6 +102,7 @@ export class PermisosAccesoService {
                         usuario: true
                     }
                 },
+                estudiante: true,
                 aprobador: true
             },
             orderBy: {
@@ -94,12 +137,12 @@ export class PermisosAccesoService {
         }
 
         // Obtener permisos pendientes de esos cursos
-        return this.prisma.permisoAcceso.findMany({
+        return this.prisma.permiso.findMany({
             where: {
                 cursoId: {
                     in: cursosTutor
                 },
-                estadoPermiso: 'PENDIENTE'
+                estado: 'PENDIENTE'
             },
             include: {
                 padre: {
@@ -107,7 +150,8 @@ export class PermisosAccesoService {
                         usuario: true
                     }
                 },
-                curso: true
+                curso: true,
+                estudiante: true
             },
             orderBy: {
                 fechaCreacion: 'asc'
@@ -119,7 +163,7 @@ export class PermisosAccesoService {
      * Obtiene un permiso por su ID
      */
     async findOne(id: number) {
-        const permiso = await this.prisma.permisoAcceso.findUnique({
+        const permiso = await this.prisma.permiso.findUnique({
             where: { id },
             include: {
                 padre: {
@@ -128,6 +172,7 @@ export class PermisosAccesoService {
                     }
                 },
                 curso: true,
+                estudiante: true,
                 aprobador: true
             }
         });
@@ -143,7 +188,7 @@ export class PermisosAccesoService {
      * Obtiene un permiso por su código QR
      */
     async findByQR(codigoQR: string) {
-        const permiso = await this.prisma.permisoAcceso.findUnique({
+        const permiso = await this.prisma.permiso.findUnique({
             where: { codigoQR },
             include: {
                 padre: {
@@ -152,6 +197,7 @@ export class PermisosAccesoService {
                     }
                 },
                 curso: true,
+                estudiante: true,
                 aprobador: true
             }
         });
@@ -164,9 +210,9 @@ export class PermisosAccesoService {
     }
 
     /**
-     * Crea un nuevo permiso de acceso
+     * Crea un nuevo permiso
      */
-    async create(createPermisoDto: CreatePermisoAccesoDto) {
+    async create(createPermisoDto: CreatePermisoDto) {
         // Validar que el padre existe
         const padre = await this.prisma.padre.findUnique({
             where: { usuarioId: createPermisoDto.padreId }
@@ -186,6 +232,31 @@ export class PermisosAccesoService {
             throw new NotFoundException(`Curso con ID ${cursoId} no encontrado`);
         }
 
+        // Si es un permiso para estudiante específico, validar que existe y es hijo del padre
+        if (createPermisoDto.estudianteId) {
+            const estudiante = await this.prisma.estudiante.findUnique({
+                where: { usuarioId: createPermisoDto.estudianteId }
+            });
+
+            if (!estudiante) {
+                throw new NotFoundException(`Estudiante con ID ${createPermisoDto.estudianteId} no encontrado`);
+            }
+
+            // Verificar que el estudiante está vinculado al padre
+            const relacion = await this.prisma.padreEstudiante.findUnique({
+                where: {
+                    padreId_estudianteId: {
+                        padreId: createPermisoDto.padreId,
+                        estudianteId: createPermisoDto.estudianteId
+                    }
+                }
+            });
+
+            if (!relacion) {
+                throw new BadRequestException('El estudiante no está vinculado a este padre');
+            }
+        }
+
         // Validar fechas
         const fechaInicio = new Date(createPermisoDto.fechaInicio);
         const fechaFin = new Date(createPermisoDto.fechaFin);
@@ -194,25 +265,23 @@ export class PermisosAccesoService {
             throw new BadRequestException('La fecha de inicio debe ser anterior a la fecha de fin');
         }
 
-        if (fechaInicio < new Date()) {
+        // Para emergencias, se puede omitir la validación de fecha futura
+        if (createPermisoDto.tipoPermiso !== TipoPermiso.EMERGENCIA && fechaInicio < new Date()) {
             throw new BadRequestException('La fecha de inicio debe ser futura');
         }
 
-        // Para permisos de emergencia, se puede omitir la validación de fecha futura
-        if (createPermisoDto.tipoPermiso === TipoPermiso.EMERGENCIA) {
-            // Permitir fechas inmediatas para emergencias
-        }
-
         // Crear permiso
-        const permiso = await this.prisma.permisoAcceso.create({
+        const permiso = await this.prisma.permiso.create({
             data: {
                 padreId: createPermisoDto.padreId,
                 cursoId,
+                estudianteId: createPermisoDto.estudianteId || null,
+                titulo: createPermisoDto.titulo,
+                descripcion: createPermisoDto.descripcion,
                 tipoPermiso: createPermisoDto.tipoPermiso,
-                motivo: createPermisoDto.motivo,
                 fechaInicio,
                 fechaFin,
-                estadoPermiso: EstadoPermiso.PENDIENTE,
+                estado: EstadoPermiso.PENDIENTE,
                 fechaCreacion: new Date()
             }
         });
@@ -220,8 +289,8 @@ export class PermisosAccesoService {
         // Notificar a tutores del curso
         await this.notificarTutores(
             cursoId,
-            'Nuevo permiso de acceso pendiente',
-            `El padre con ID ${createPermisoDto.padreId} solicita permiso de acceso por: ${createPermisoDto.motivo}`
+            'Nuevo permiso pendiente',
+            `El padre con ID ${createPermisoDto.padreId} solicita permiso de tipo ${createPermisoDto.tipoPermiso}`
         );
 
         return permiso;
@@ -230,9 +299,9 @@ export class PermisosAccesoService {
     /**
      * Actualiza un permiso existente
      */
-    async update(id: number, updatePermisoDto: UpdatePermisoAccesoDto) {
+    async update(id: number, updatePermisoDto: UpdatePermisoDto) {
         // Verificar que el permiso existe
-        const permisoExistente = await this.prisma.permisoAcceso.findUnique({
+        const permisoExistente = await this.prisma.permiso.findUnique({
             where: { id }
         });
 
@@ -241,20 +310,18 @@ export class PermisosAccesoService {
         }
 
         // Solo se pueden modificar permisos pendientes
-        if (permisoExistente.estadoPermiso !== EstadoPermiso.PENDIENTE) {
-            throw new BadRequestException(`No se puede modificar un permiso en estado ${permisoExistente.estadoPermiso}`);
+        if (permisoExistente.estado !== EstadoPermiso.PENDIENTE) {
+            throw new BadRequestException(`No se puede modificar un permiso en estado ${permisoExistente.estado}`);
         }
 
         // Preparar datos para actualizar
         const dataToUpdate: any = {};
 
-        if (updatePermisoDto.tipoPermiso) {
-            dataToUpdate.tipoPermiso = updatePermisoDto.tipoPermiso;
-        }
-
-        if (updatePermisoDto.motivo) {
-            dataToUpdate.motivo = updatePermisoDto.motivo;
-        }
+        // Actualizar solo los campos proporcionados
+        if (updatePermisoDto.titulo) dataToUpdate.titulo = updatePermisoDto.titulo;
+        if (updatePermisoDto.descripcion) dataToUpdate.descripcion = updatePermisoDto.descripcion;
+        if (updatePermisoDto.tipoPermiso) dataToUpdate.tipoPermiso = updatePermisoDto.tipoPermiso;
+        if (updatePermisoDto.estado) dataToUpdate.estado = updatePermisoDto.estado;
 
         if (updatePermisoDto.fechaInicio) {
             dataToUpdate.fechaInicio = new Date(updatePermisoDto.fechaInicio);
@@ -274,18 +341,18 @@ export class PermisosAccesoService {
             }
         }
 
-        return this.prisma.permisoAcceso.update({
+        return this.prisma.permiso.update({
             where: { id },
             data: dataToUpdate
         });
     }
 
     /**
-     * Aprueba un permiso de acceso
+     * Aprueba un permiso
      */
     async aprobar(id: number, tutorId: string, comentarios?: string) {
         // Verificar que el permiso existe
-        const permiso = await this.prisma.permisoAcceso.findUnique({
+        const permiso = await this.prisma.permiso.findUnique({
             where: { id },
             include: {
                 curso: true
@@ -297,8 +364,8 @@ export class PermisosAccesoService {
         }
 
         // Verificar que el permiso está pendiente
-        if (permiso.estadoPermiso !== EstadoPermiso.PENDIENTE) {
-            throw new BadRequestException(`El permiso ya está en estado ${permiso.estadoPermiso}`);
+        if (permiso.estado !== EstadoPermiso.PENDIENTE) {
+            throw new BadRequestException(`El permiso ya está en estado ${permiso.estado}`);
         }
 
         // Verificar que el tutor tiene permisos para aprobar (es tutor del curso)
@@ -319,10 +386,10 @@ export class PermisosAccesoService {
         const codigoQR = uuidv4();
 
         // Actualizar permiso
-        const permisoAprobado = await this.prisma.permisoAcceso.update({
+        const permisoAprobado = await this.prisma.permiso.update({
             where: { id },
             data: {
-                estadoPermiso: EstadoPermiso.APROBADO,
+                estado: EstadoPermiso.APROBADO,
                 aprobadorId: tutorId,
                 fechaAprobacion: new Date(),
                 codigoQR
@@ -332,8 +399,8 @@ export class PermisosAccesoService {
         // Notificar al padre
         await this.notificacionService.create({
             usuarioReceptorId: permiso.padreId,
-            titulo: 'Permiso de acceso aprobado',
-            mensaje: `Su permiso de acceso ha sido aprobado. Utilice el código QR proporcionado para acceder.`,
+            titulo: 'Permiso aprobado',
+            mensaje: `Su permiso ha sido aprobado. Utilice el código QR proporcionado.`,
             tipo: 'EXITO'
         });
 
@@ -341,11 +408,11 @@ export class PermisosAccesoService {
     }
 
     /**
-     * Rechaza un permiso de acceso
+     * Rechaza un permiso
      */
     async rechazar(id: number, tutorId: string, comentarios?: string) {
         // Verificar que el permiso existe
-        const permiso = await this.prisma.permisoAcceso.findUnique({
+        const permiso = await this.prisma.permiso.findUnique({
             where: { id }
         });
 
@@ -354,8 +421,8 @@ export class PermisosAccesoService {
         }
 
         // Verificar que el permiso está pendiente
-        if (permiso.estadoPermiso !== EstadoPermiso.PENDIENTE) {
-            throw new BadRequestException(`El permiso ya está en estado ${permiso.estadoPermiso}`);
+        if (permiso.estado !== EstadoPermiso.PENDIENTE) {
+            throw new BadRequestException(`El permiso ya está en estado ${permiso.estado}`);
         }
 
         // Verificar que el tutor tiene permisos para rechazar (es tutor del curso)
@@ -373,10 +440,10 @@ export class PermisosAccesoService {
         }
 
         // Actualizar permiso
-        const permisoRechazado = await this.prisma.permisoAcceso.update({
+        const permisoRechazado = await this.prisma.permiso.update({
             where: { id },
             data: {
-                estadoPermiso: EstadoPermiso.RECHAZADO,
+                estado: EstadoPermiso.RECHAZADO,
                 aprobadorId: tutorId,
                 fechaAprobacion: new Date()
             }
@@ -385,8 +452,8 @@ export class PermisosAccesoService {
         // Notificar al padre
         await this.notificacionService.create({
             usuarioReceptorId: permiso.padreId,
-            titulo: 'Permiso de acceso rechazado',
-            mensaje: comentarios || 'Su permiso de acceso ha sido rechazado.',
+            titulo: 'Permiso rechazado',
+            mensaje: comentarios || 'Su permiso ha sido rechazado.',
             tipo: 'ALERTA'
         });
 
@@ -398,7 +465,7 @@ export class PermisosAccesoService {
      */
     async marcarUtilizado(codigoQR: string) {
         // Verificar que el permiso existe
-        const permiso = await this.prisma.permisoAcceso.findUnique({
+        const permiso = await this.prisma.permiso.findUnique({
             where: { codigoQR }
         });
 
@@ -407,18 +474,18 @@ export class PermisosAccesoService {
         }
 
         // Verificar que el permiso está aprobado
-        if (permiso.estadoPermiso !== EstadoPermiso.APROBADO) {
-            throw new BadRequestException(`El permiso no está aprobado, estado actual: ${permiso.estadoPermiso}`);
+        if (permiso.estado !== EstadoPermiso.APROBADO) {
+            throw new BadRequestException(`El permiso no está aprobado, estado actual: ${permiso.estado}`);
         }
 
         // Verificar que el permiso es válido (no ha vencido)
         const ahora = new Date();
         if (permiso.fechaFin < ahora) {
             // Actualizar a vencido
-            await this.prisma.permisoAcceso.update({
+            await this.prisma.permiso.update({
                 where: { id: permiso.id },
                 data: {
-                    estadoPermiso: EstadoPermiso.VENCIDO
+                    estado: EstadoPermiso.VENCIDO
                 }
             });
             throw new BadRequestException('El permiso ha vencido');
@@ -429,10 +496,10 @@ export class PermisosAccesoService {
         }
 
         // Actualizar estado a utilizado
-        return this.prisma.permisoAcceso.update({
+        return this.prisma.permiso.update({
             where: { id: permiso.id },
             data: {
-                estadoPermiso: EstadoPermiso.UTILIZADO
+                estado: EstadoPermiso.UTILIZADO
             }
         });
     }
@@ -441,7 +508,7 @@ export class PermisosAccesoService {
      * Elimina un permiso
      */
     async remove(id: number) {
-        const permiso = await this.prisma.permisoAcceso.findUnique({
+        const permiso = await this.prisma.permiso.findUnique({
             where: { id }
         });
 
@@ -449,7 +516,7 @@ export class PermisosAccesoService {
             throw new NotFoundException(`Permiso con ID ${id} no encontrado`);
         }
 
-        return this.prisma.permisoAcceso.delete({
+        return this.prisma.permiso.delete({
             where: { id }
         });
     }

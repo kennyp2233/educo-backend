@@ -1,14 +1,14 @@
-// src/permisos/dto/create-permiso-acceso.dto.ts
+// src/permisos/dto/create-permiso.dto.ts
 import { IsNotEmpty, IsString, IsEnum, IsDateString, IsOptional } from 'class-validator';
 
 export enum TipoPermiso {
-    REGULAR = 'REGULAR',
-    ESPECIFICO = 'ESPECIFICO',
+    ACCESO_PADRE = 'ACCESO_PADRE',
+    EVENTO_ESTUDIANTE = 'EVENTO_ESTUDIANTE',
     EMERGENCIA = 'EMERGENCIA',
     RECURRENTE = 'RECURRENTE'
 }
 
-export class CreatePermisoAccesoDto {
+export class CreatePermisoDto {
     @IsNotEmpty()
     @IsString()
     padreId: string;
@@ -17,13 +17,21 @@ export class CreatePermisoAccesoDto {
     @IsString()
     cursoId: string;
 
-    @IsNotEmpty()
-    @IsEnum(TipoPermiso)
-    tipoPermiso: TipoPermiso;
+    @IsOptional()
+    @IsString()
+    estudianteId?: string;
 
     @IsNotEmpty()
     @IsString()
-    motivo: string;
+    titulo: string;
+
+    @IsNotEmpty()
+    @IsString()
+    descripcion: string;
+
+    @IsNotEmpty()
+    @IsEnum(TipoPermiso)
+    tipoPermiso: TipoPermiso;
 
     @IsNotEmpty()
     @IsDateString()
@@ -33,3 +41,4 @@ export class CreatePermisoAccesoDto {
     @IsDateString()
     fechaFin: string;
 }
+

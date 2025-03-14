@@ -1,4 +1,3 @@
-// src/carnet/dto/create-carnet.dto.ts
 import { IsNotEmpty, IsString, IsDateString } from 'class-validator';
 
 export class CreateCarnetDto {
@@ -10,4 +9,3 @@ export class CreateCarnetDto {
   @IsDateString()
   fechaExpiracion: string;
 }
-

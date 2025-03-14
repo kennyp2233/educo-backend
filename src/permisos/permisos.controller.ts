@@ -13,12 +13,13 @@ import {
     NotFoundException,
     BadRequestException,
     UnauthorizedException,
-    ParseIntPipe
+    ParseIntPipe,
+    Query
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { PermisosAccesoService } from './permisos.service';
-import { CreatePermisoAccesoDto } from './dto/create-permiso-acceso.dto';
-import { UpdatePermisoAccesoDto } from './dto/update-permiso-acceso.dto';
+import { PermisosService } from './permisos.service';
+import { CreatePermisoDto, TipoPermiso } from './dto/create-permiso.dto';
+import { UpdatePermisoDto, EstadoPermiso } from './dto/update-permiso.dto';
 import { UsuariosService } from '../users/users.service';
 import { Request } from 'express';
 
@@ -29,11 +30,11 @@ interface RequestWithUser extends Request {
     }
 }
 
-@Controller('permisos-acceso')
+@Controller('permisos')
 @UseGuards(AuthGuard('jwt'))
-export class PermisosAccesoController {
+export class PermisosController {
     constructor(
-        private readonly permisosService: PermisosAccesoService,
+        private readonly permisosService: PermisosService,
         private readonly usuariosService: UsuariosService
     ) { }
 
@@ -46,11 +47,27 @@ export class PermisosAccesoController {
     }
 
     /**
+     * Obtener permisos por tipo
+     */
+    @Get('tipo/:tipo')
+    async findByTipo(@Param('tipo') tipo: string) {
+        return this.permisosService.findByTipo(tipo);
+    }
+
+    /**
      * Obtener permisos de un padre específico
      */
     @Get('padre/:padreId')
     async findByPadre(@Param('padreId') padreId: string) {
         return this.permisosService.findByPadre(padreId);
+    }
+
+    /**
+     * Obtener permisos de un estudiante específico
+     */
+    @Get('estudiante/:estudianteId')
+    async findByEstudiante(@Param('estudianteId') estudianteId: string) {
+        return this.permisosService.findByEstudiante(estudianteId);
     }
 
     /**
@@ -94,11 +111,11 @@ export class PermisosAccesoController {
     }
 
     /**
-     * Crear un nuevo permiso de acceso
+     * Crear un nuevo permiso
      */
     @Post()
     async create(
-        @Body(new ValidationPipe()) createPermisoDto: CreatePermisoAccesoDto
+        @Body(new ValidationPipe()) createPermisoDto: CreatePermisoDto
     ) {
         try {
             return await this.permisosService.create(createPermisoDto);
@@ -106,7 +123,7 @@ export class PermisosAccesoController {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al crear permiso de acceso');
+            throw new BadRequestException(error.message || 'Error al crear permiso');
         }
     }
 
@@ -116,7 +133,7 @@ export class PermisosAccesoController {
     @Patch(':id')
     async update(
         @Param('id', ParseIntPipe) id: number,
-        @Body(new ValidationPipe()) updatePermisoDto: UpdatePermisoAccesoDto
+        @Body(new ValidationPipe()) updatePermisoDto: UpdatePermisoDto
     ) {
         try {
             return await this.permisosService.update(id, updatePermisoDto);
@@ -124,7 +141,7 @@ export class PermisosAccesoController {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al actualizar permiso de acceso');
+            throw new BadRequestException(error.message || 'Error al actualizar permiso');
         }
     }
 
@@ -144,7 +161,7 @@ export class PermisosAccesoController {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al aprobar permiso de acceso');
+            throw new BadRequestException(error.message || 'Error al aprobar permiso');
         }
     }
 
@@ -164,7 +181,7 @@ export class PermisosAccesoController {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al rechazar permiso de acceso');
+            throw new BadRequestException(error.message || 'Error al rechazar permiso');
         }
     }
 
@@ -179,7 +196,7 @@ export class PermisosAccesoController {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al validar permiso de acceso');
+            throw new BadRequestException(error.message || 'Error al validar permiso');
         }
     }
 
@@ -194,7 +211,7 @@ export class PermisosAccesoController {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al eliminar permiso de acceso');
+            throw new BadRequestException(error.message || 'Error al eliminar permiso');
         }
     }
 
