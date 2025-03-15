@@ -80,9 +80,6 @@ export class Auth0Controller {
     @Get('user-roles')
     @UseGuards(AuthGuard('jwt'))
     async getUserRoles(@Req() req: RequestWithUser) {
-        console.log('🔍 Headers recibidos:', req.headers);
-        console.log('🔍 Token extraído:', req.headers.authorization);
-        console.log('🔍 Usuario en req.user:', req.user);
         try {
             return await this.auth0Service.getUserRoles(req.user.sub);
         } catch (error) {
