@@ -18,7 +18,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
         console.log('🔍 Token extraído de la solicitud:', token);
         return token;
-      },
+    },
       secretOrKeyProvider: passportJwtSecret({
         cache: true,
         rateLimit: true,
@@ -28,7 +28,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       audience: auth0Audience,
       issuer: `https://${auth0Domain}/`,
       algorithms: ['RS256'],
-
+      
     });
 
     // Ahora sí podemos usar `this`

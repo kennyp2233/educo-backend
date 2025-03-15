@@ -386,4 +386,6 @@ export class UsuariosService {
 
         return usuarioRoles.map(ur => ur.rol.nombre);
     }
+
+
 }
