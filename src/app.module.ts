@@ -12,8 +12,7 @@ import { RecaudacionModule } from './recaudacion/recaudacion.module';
 import { CarnetModule } from './carnet/carnet.module';
 import { NotificacionModule } from './notificacion/notificacion.module';
 import { AprobacionesModule } from './aprobaciones/aprobaciones.module';
-import { PermisosAccesoModule } from './permisos/permisos.module';
-
+import { PermisosModule } from './permisos/permisos.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,7 +27,7 @@ import { PermisosAccesoModule } from './permisos/permisos.module';
     CarnetModule,
     NotificacionModule,
     AprobacionesModule,
-    PermisosAccesoModule,
+    PermisosModule,
   ],
   providers: [JwtStrategy],
 })
