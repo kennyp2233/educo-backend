@@ -9,37 +9,38 @@ datasource db {
 }
 
 model Usuario {
-  id         String   @id @default(uuid())
-  auth0Id    String   @unique
-  roles      UsuarioRol[]
-  padres     Padre?
-  estudiante Estudiante?
-  profesor   Profesor?
-  tesorero   Tesorero?
+  id             String         @id @default(uuid())
+  auth0Id        String         @unique
+  roles          UsuarioRol[]
+  padres         Padre?
+  estudiante     Estudiante?
+  profesor       Profesor?
+  tesorero       Tesorero?
   notificaciones Notificacion[]
-  
+
   // Campos para aprobaciones
-  estadoAprobacion EstadoAprobacion?
+  estadoAprobacion       EstadoAprobacion?
   aprobacionesRealizadas EstadoAprobacion[] @relation("AprobadorUsuario")
-  permisosAprobados Permiso[] @relation("AprobadorPermiso")
+  permisosAprobados      Permiso[]          @relation("AprobadorPermiso")
 }
 
 model Rol {
-  id     Int    @id @default(autoincrement())
-  nombre String @unique
+  id           Int          @id @default(autoincrement())
+  nombre       String       @unique
   usuarioRoles UsuarioRol[]
 }
 
 model UsuarioRol {
-  usuarioId String @unique @default(uuid()) @map("usuario_id")
+  usuarioId String  @default(uuid()) @map("usuario_id")
   rolId     Int
   usuario   Usuario @relation(fields: [usuarioId], references: [id])
   rol       Rol     @relation(fields: [rolId], references: [id])
+
   @@id([usuarioId, rolId])
 }
 
 model Institucion {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   nombre    String
   direccion String
   telefono  String
@@ -47,155 +48,157 @@ model Institucion {
 }
 
 model Curso {
-  id             Int      @id @default(autoincrement())
-  institucionId  Int
-  nombre         String
-  paralelo       String
-  anioLectivo    String
-  institucion    Institucion @relation(fields: [institucionId], references: [id])
-  estudiantes    Estudiante[]
-  profesorCurso  ProfesorCurso[]
-  tesoreros      Tesorero[]
-  permisos       Permiso[]
+  id            Int             @id @default(autoincrement())
+  institucionId Int
+  nombre        String
+  paralelo      String
+  anioLectivo   String
+  institucion   Institucion     @relation(fields: [institucionId], references: [id])
+  estudiantes   Estudiante[]
+  profesorCurso ProfesorCurso[]
+  tesoreros     Tesorero[]
+  permisos      Permiso[]
 }
 
 model Padre {
-  usuarioId String @id
+  usuarioId String            @id
   direccion String
   telefono  String
-  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+  usuario   Usuario           @relation(fields: [usuarioId], references: [id])
   hijos     PadreEstudiante[]
 
-  Abono Abono[]
+  Abono    Abono[]
   permisos Permiso[] // Unificado
 }
 
 model Estudiante {
-  usuarioId String @id
+  usuarioId String            @id
   cursoId   Int
   grado     String
-  usuario   Usuario @relation(fields: [usuarioId], references: [id])
-  curso     Curso @relation(fields: [cursoId], references: [id])
+  usuario   Usuario           @relation(fields: [usuarioId], references: [id])
+  curso     Curso             @relation(fields: [cursoId], references: [id])
   padres    PadreEstudiante[]
   carnet    Carnet?
 
-  Abono Abono[]
+  Abono             Abono[]
   permisosRecibidos Permiso[] @relation("PermisoEstudiante") // Relación explícita
 }
 
 model PadreEstudiante {
-  padreId      String
-  estudianteId String
-  esRepresentante Boolean
-  estadoVinculacion String @default("PENDIENTE")
-  aprobadorId  String?
-  fechaAprobacion DateTime?
-  padre        Padre @relation(fields: [padreId], references: [usuarioId])
-  estudiante   Estudiante @relation(fields: [estudianteId], references: [usuarioId])
+  padreId           String
+  estudianteId      String
+  esRepresentante   Boolean
+  estadoVinculacion String     @default("PENDIENTE")
+  aprobadorId       String?
+  fechaAprobacion   DateTime?
+  padre             Padre      @relation(fields: [padreId], references: [usuarioId])
+  estudiante        Estudiante @relation(fields: [estudianteId], references: [usuarioId])
+
   @@id([padreId, estudianteId])
 }
 
 model Profesor {
-  usuarioId String @id
+  usuarioId    String          @id
   especialidad String
-  usuario   Usuario @relation(fields: [usuarioId], references: [id])
-  cursos    ProfesorCurso[]
+  usuario      Usuario         @relation(fields: [usuarioId], references: [id])
+  cursos       ProfesorCurso[]
 }
 
 model ProfesorCurso {
-  profesorId String
-  cursoId    Int
-  esTutor    Boolean
-  puedeAprobarPermisos Boolean @default(false)
-  profesor   Profesor @relation(fields: [profesorId], references: [usuarioId])
-  curso      Curso @relation(fields: [cursoId], references: [id])
+  profesorId           String
+  cursoId              Int
+  esTutor              Boolean
+  puedeAprobarPermisos Boolean  @default(false)
+  profesor             Profesor @relation(fields: [profesorId], references: [usuarioId])
+  curso                Curso    @relation(fields: [cursoId], references: [id])
+
   @@id([profesorId, cursoId])
 }
 
 model Tesorero {
-  usuarioId String @id
-  cursoId   Int
-  usuario   Usuario @relation(fields: [usuarioId], references: [id])
-  curso     Curso @relation(fields: [cursoId], references: [id])
+  usuarioId     String        @id
+  cursoId       Int
+  usuario       Usuario       @relation(fields: [usuarioId], references: [id])
+  curso         Curso         @relation(fields: [cursoId], references: [id])
   recaudaciones Recaudacion[]
 }
 
 model Recaudacion {
-  id           Int      @id @default(autoincrement())
-  tesoreroId   String
-  titulo       String
-  descripcion  String
-  montoTotal   Float
-  fechaInicio  DateTime
-  fechaCierre  DateTime
-  estado       String
-  tesorero     Tesorero @relation(fields: [tesoreroId], references: [usuarioId])
-  abonos       Abono[]
+  id          Int      @id @default(autoincrement())
+  tesoreroId  String
+  titulo      String
+  descripcion String
+  montoTotal  Float
+  fechaInicio DateTime
+  fechaCierre DateTime
+  estado      String
+  tesorero    Tesorero @relation(fields: [tesoreroId], references: [usuarioId])
+  abonos      Abono[]
 }
 
 model Abono {
-  id             Int      @id @default(autoincrement())
-  recaudacionId  Int
-  padreId        String
-  estudianteId   String
-  monto          Float
-  fechaPago      DateTime
-  comprobante    String?
-  estado         String
-  recaudacion    Recaudacion @relation(fields: [recaudacionId], references: [id])
-  padre          Padre @relation(fields: [padreId], references: [usuarioId])
-  estudiante     Estudiante @relation(fields: [estudianteId], references: [usuarioId])
+  id            Int         @id @default(autoincrement())
+  recaudacionId Int
+  padreId       String
+  estudianteId  String
+  monto         Float
+  fechaPago     DateTime
+  comprobante   String?
+  estado        String
+  recaudacion   Recaudacion @relation(fields: [recaudacionId], references: [id])
+  padre         Padre       @relation(fields: [padreId], references: [usuarioId])
+  estudiante    Estudiante  @relation(fields: [estudianteId], references: [usuarioId])
 }
 
 model Carnet {
-  id             Int      @id @default(autoincrement())
-  estudianteId   String   @unique
-  codigoQR       String   @unique
+  id              Int        @id @default(autoincrement())
+  estudianteId    String     @unique
+  codigoQR        String     @unique
   fechaExpiracion DateTime
-  estado         String
-  estudiante     Estudiante @relation(fields: [estudianteId], references: [usuarioId])
+  estado          String
+  estudiante      Estudiante @relation(fields: [estudianteId], references: [usuarioId])
 }
 
 // MODELO UNIFICADO DE PERMISOS
 model Permiso {
-  id            Int       @id @default(autoincrement())
-  padreId       String
-  cursoId       Int
-  estudianteId  String?   // Opcional para permitir permisos de acceso sin estudiante específico
-  titulo        String
-  descripcion   String    // Antiguo "motivo"
-  tipoPermiso   String    // "ACCESO_PADRE", "EVENTO_ESTUDIANTE", "EMERGENCIA", "RECURRENTE"
-  fechaInicio   DateTime
-  fechaFin      DateTime
-  codigoQR      String?   @unique
-  estado        String    // "PENDIENTE", "APROBADO", "RECHAZADO", "UTILIZADO", "VENCIDO"
-  aprobadorId   String?
-  fechaCreacion DateTime  @default(now())
+  id              Int       @id @default(autoincrement())
+  padreId         String
+  cursoId         Int
+  estudianteId    String? // Opcional para permitir permisos de acceso sin estudiante específico
+  titulo          String
+  descripcion     String // Antiguo "motivo"
+  tipoPermiso     String // "ACCESO_PADRE", "EVENTO_ESTUDIANTE", "EMERGENCIA", "RECURRENTE"
+  fechaInicio     DateTime
+  fechaFin        DateTime
+  codigoQR        String?   @unique
+  estado          String // "PENDIENTE", "APROBADO", "RECHAZADO", "UTILIZADO", "VENCIDO"
+  aprobadorId     String?
+  fechaCreacion   DateTime  @default(now())
   fechaAprobacion DateTime?
 
   // Relaciones
-  padre         Padre     @relation(fields: [padreId], references: [usuarioId])
-  curso         Curso     @relation(fields: [cursoId], references: [id])
-  estudiante    Estudiante? @relation("PermisoEstudiante", fields: [estudianteId], references: [usuarioId])
-  aprobador     Usuario?  @relation("AprobadorPermiso", fields: [aprobadorId], references: [id])
+  padre      Padre       @relation(fields: [padreId], references: [usuarioId])
+  curso      Curso       @relation(fields: [cursoId], references: [id])
+  estudiante Estudiante? @relation("PermisoEstudiante", fields: [estudianteId], references: [usuarioId])
+  aprobador  Usuario?    @relation("AprobadorPermiso", fields: [aprobadorId], references: [id])
 }
 
 model Notificacion {
-  id                 Int      @id @default(autoincrement())
-  usuarioReceptorId  String
-  titulo             String
-  mensaje            String
-  tipo               String
-  fecha              DateTime @default(now())
-  leida              Boolean @default(false)
-  usuarioReceptor    Usuario @relation(fields: [usuarioReceptorId], references: [id])
+  id                Int      @id @default(autoincrement())
+  usuarioReceptorId String
+  titulo            String
+  mensaje           String
+  tipo              String
+  fecha             DateTime @default(now())
+  leida             Boolean  @default(false)
+  usuarioReceptor   Usuario  @relation(fields: [usuarioReceptorId], references: [id])
 }
 
 model EstadoAprobacion {
   id              Int       @id @default(autoincrement())
   usuarioId       String    @unique
   usuario         Usuario   @relation(fields: [usuarioId], references: [id])
-  estadoActual    String    // "PENDIENTE", "APROBADO", "RECHAZADO"
+  estadoActual    String // "PENDIENTE", "APROBADO", "RECHAZADO"
   aprobadorId     String?
   aprobador       Usuario?  @relation("AprobadorUsuario", fields: [aprobadorId], references: [id])
   fechaSolicitud  DateTime  @default(now())

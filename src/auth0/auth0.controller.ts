@@ -7,6 +7,9 @@ import { RegisterDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
+import { Roles } from './decorators/roles.decorator';
+import { RolesGuard } from './guards/roles.guard';
+
 interface RequestWithUser extends Request {
     user: {
         sub: string;
@@ -37,7 +40,8 @@ export class Auth0Controller {
                 registerDto.email,
                 registerDto.password,
                 registerDto.role,
-                registerDto.fullName
+                registerDto.fullName,
+                registerDto.perfilData
             );
             return { success: true, message: 'Usuario registrado correctamente', user };
         } catch (error) {
@@ -76,6 +80,9 @@ export class Auth0Controller {
     @Get('user-roles')
     @UseGuards(AuthGuard('jwt'))
     async getUserRoles(@Req() req: RequestWithUser) {
+        console.log('🔍 Headers recibidos:', req.headers);
+        console.log('🔍 Token extraído:', req.headers.authorization);
+        console.log('🔍 Usuario en req.user:', req.user);
         try {
             return await this.auth0Service.getUserRoles(req.user.sub);
         } catch (error) {
@@ -86,4 +93,10 @@ export class Auth0Controller {
         }
     }
 
+    @Get('user-role-test')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('admin')
+    async testRoleGuard() {
+        return { message: 'Si puedes ver esto, tienes el rol de administrador' };
+    }
 }
