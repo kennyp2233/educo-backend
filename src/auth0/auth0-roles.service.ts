@@ -46,23 +46,28 @@ export class Auth0RolesService {
      */
     async getManagementApiToken(): Promise<string> {
         try {
+            this.logger.log(`Intentando obtener token de gestión con clientId: ${this.clientId.substring(0, 5)}... y domain: ${this.domain}`);
+
             const response = await firstValueFrom(
                 this.httpService.post(`https://${this.domain}/oauth/token`, {
                     client_id: this.clientId,
                     client_secret: this.clientSecret,
                     audience: `https://${this.domain}/api/v2/`,
                     grant_type: 'client_credentials',
-                    scope: 'read:users read:roles update:users create:users delete:users',
+                    scope: 'read:users read:roles',
                 })
             );
 
+            this.logger.log('Token de gestión obtenido correctamente');
             return response.data.access_token;
         } catch (error) {
             this.logger.error(`Error al obtener token de gestión: ${error.message}`);
-            throw new Error('Error al obtener token de gestión');
+            if (error.response) {
+                this.logger.error(`Detalles del error: ${JSON.stringify(error.response.data)}`);
+            }
+            throw new Error('Error al obtener token de gestión: ' + (error.response?.data?.error_description || error.message));
         }
     }
-
     /**
      * Obtiene los roles disponibles en Auth0.
      */

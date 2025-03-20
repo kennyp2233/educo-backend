@@ -1,6 +1,6 @@
 // src/auth0/auth0.controller.ts
 
-import { Controller, Post, Body, HttpException, HttpStatus, Get, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, HttpException, HttpStatus, Get, UseGuards, Req, NotFoundException } from '@nestjs/common';
 import { Auth0Service } from './auth0.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -9,6 +9,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
+import { UsuariosService } from 'src/users/users.service';
+import { Auth0UsersService } from './auth0-users.service';
 
 interface RequestWithUser extends Request {
     user: {
@@ -19,7 +21,11 @@ interface RequestWithUser extends Request {
 
 @Controller('auth')
 export class Auth0Controller {
-    constructor(private readonly auth0Service: Auth0Service) { }
+    constructor(
+        private readonly auth0Service: Auth0Service,
+        private readonly usuariosService: UsuariosService,
+        private readonly auth0UsersService: Auth0UsersService
+    ) { }
 
     @Post('login')
     async login(@Body() loginDto: LoginDto) {
@@ -95,6 +101,59 @@ export class Auth0Controller {
     @Roles('admin')
     async testRoleGuard() {
         return { message: 'Si puedes ver esto, tienes el rol de administrador' };
+    }
+
+    // src/auth0/auth0.controller.ts
+    @Get('user-profile')
+    @UseGuards(AuthGuard('jwt'))
+    async getUserProfile(@Req() req: RequestWithUser) {
+        try {
+            const auth0Id = req.user.sub;
+
+            // Obtener usuario desde el servicio de usuarios
+            // Usamos el método que sí existe en tu backend
+            const usuario = await this.usuariosService.buscarPorAuth0Id(auth0Id);
+
+            if (!usuario) {
+                throw new NotFoundException('Usuario no encontrado');
+            }
+
+            // Información del usuario desde el token JWT
+            const userInfo = {
+                sub: auth0Id,
+                name: req.user.name || '',
+                email: req.user.email || '',
+                picture: req.user.picture || null
+            };
+
+            // Obtener roles del usuario
+            let roles = [];
+            try {
+                // Intentar obtener roles desde Auth0 (si es posible)
+                roles = await this.auth0Service.getUserRoles(auth0Id);
+            } catch (error) {
+                // Fallback: Extraer roles de la información local
+                roles = await this.usuariosService.obtenerRolesUsuario(usuario.id);
+                roles = roles.map(rolNombre => ({ name: rolNombre }));
+            }
+
+            // Respuesta con formato similar a loginWithEmail
+            return {
+                user: {
+                    sub: auth0Id,
+                    name: userInfo.name,
+                    email: userInfo.email,
+                    picture: userInfo.picture,
+                    roles: roles.map(r => typeof r === 'string' ? r : r.name),
+                    userId: usuario.id
+                }
+            };
+        } catch (error) {
+            throw new HttpException(
+                error.message || 'Error al obtener perfil de usuario',
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
     }
 
 
