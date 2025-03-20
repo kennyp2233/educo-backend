@@ -1,11 +1,24 @@
-// src/auth0/services/auth0-users.service.ts
+// src/auth0/auth0-users.service.ts
 
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { Auth0RolesService } from './auth0-roles.service';
+
+export interface Auth0UserProfile {
+    sub: string;
+    email: string;
+    name: string;
+    picture?: string;
+    [key: string]: any;
+}
+
+export interface PerfilUsuarioData {
+    tipo: string;
+    datos: any;
+}
 
 @Injectable()
 export class Auth0UsersService {
@@ -26,7 +39,7 @@ export class Auth0UsersService {
     /**
      * Obtiene información del usuario mediante su access_token
      */
-    async getUserInfo(accessToken: string): Promise<any> {
+    async getUserInfo(accessToken: string): Promise<Auth0UserProfile> {
         try {
             const response = await firstValueFrom(
                 this.httpService.get(`https://${this.domain}/userinfo`, {
@@ -47,7 +60,7 @@ export class Auth0UsersService {
      */
     async createUser(email: string, password: string, fullName: string): Promise<any> {
         try {
-            const token = await this.getManagementApiToken();
+            const token = await this.auth0RolesService.getManagementApiToken();
 
             const response = await firstValueFrom(
                 this.httpService.post(
@@ -70,7 +83,7 @@ export class Auth0UsersService {
             return response.data;
         } catch (error) {
             this.logger.error(`Error al crear usuario en Auth0: ${error.message}`);
-            throw new Error('Error al crear usuario en Auth0');
+            throw new Error(`Error al crear usuario en Auth0: ${error.response?.data?.message || error.message}`);
         }
     }
 
@@ -79,7 +92,7 @@ export class Auth0UsersService {
      */
     async deleteUser(userId: string): Promise<void> {
         try {
-            const token = await this.getManagementApiToken();
+            const token = await this.auth0RolesService.getManagementApiToken();
 
             await firstValueFrom(
                 this.httpService.delete(`${this.apiUrl}/users/${userId}`, {
@@ -101,10 +114,9 @@ export class Auth0UsersService {
      */
     async syncUserWithDatabase(auth0Id: string, roles: any[]): Promise<any> {
         try {
-            let usuario;
             return await this.prisma.$transaction(async (prisma) => {
                 // Buscar o crear usuario en la base de datos local
-                usuario = await prisma.usuario.findUnique({
+                let usuario = await prisma.usuario.findUnique({
                     where: { auth0Id },
                     include: {
                         roles: {
@@ -118,15 +130,24 @@ export class Auth0UsersService {
                 if (!usuario) {
                     // Si no existe, crear usuario
                     usuario = await prisma.usuario.create({
-                        data: { auth0Id }
+                        data: { auth0Id },
+                        include: {
+                            roles: {
+                                include: {
+                                    rol: true
+                                }
+                            }
+                        }
                     });
                 }
+
                 // Sincronizar roles
                 if (roles && roles.length > 0) {
                     const currentRoleIds = usuario.roles?.map(r => r.rolId) || [];
                     for (const role of roles) {
                         // Obtener ID del rol local correspondiente
                         const rolId = await this.auth0RolesService.mapAuth0RoleToLocalId(role.name);
+
                         // Verificar si ya tiene este rol asignado
                         if (!currentRoleIds.includes(rolId)) {
                             // Verificar que el rol existe en la BD local
@@ -136,7 +157,6 @@ export class Auth0UsersService {
                                 this.logger.warn(`Rol con ID ${rolId} no existe en la BD local. Creando...`);
                                 await prisma.rol.create({
                                     data: {
-                                        // id: rolId,
                                         nombre: role.name
                                     }
                                 });
@@ -195,7 +215,8 @@ export class Auth0UsersService {
 
                 // 4. Si hay datos de perfil, crear perfil según rol
                 if (perfilData) {
-                    switch (roleName.toLowerCase()) {
+                    const normalizedRole = this.normalizeRoleName(roleName);
+                    switch (normalizedRole) {
                         case 'padre_familia':
                         case 'padre':
                             await prisma.padre.create({
@@ -257,27 +278,8 @@ export class Auth0UsersService {
     }
 
     /**
-     * Obtiene el token de gestión
+     * Obtiene el perfil completo de un usuario
      */
-    private async getManagementApiToken(): Promise<string> {
-        try {
-            const response = await firstValueFrom(
-                this.httpService.post(`https://${this.domain}/oauth/token`, {
-                    client_id: this.configService.get<string>('AUTH0_CLIENT_ID'),
-                    client_secret: this.configService.get<string>('AUTH0_CLIENT_SECRET'),
-                    audience: `https://${this.domain}/api/v2/`,
-                    grant_type: 'client_credentials',
-                    scope: 'read:users update:users create:users delete:users',
-                })
-            );
-
-            return response.data.access_token;
-        } catch (error) {
-            this.logger.error(`Error al obtener token de gestión: ${error.message}`);
-            throw new Error('Error al obtener token de gestión');
-        }
-    }
-
     async getUserProfile(userId: string, accessToken: string): Promise<any> {
         try {
             // 1. Obtener información del usuario desde Auth0
@@ -317,7 +319,7 @@ export class Auth0UsersService {
             });
 
             if (!localUser) {
-                throw new Error('Usuario no encontrado en la base de datos local');
+                throw new NotFoundException('Usuario no encontrado en la base de datos local');
             }
 
             // 3. Obtener roles del usuario desde Auth0
@@ -344,7 +346,11 @@ export class Auth0UsersService {
         }
     }
 
-    private determinarPerfilUsuario(usuario: any) {
+    /**
+     * Determina el tipo de perfil de un usuario
+     * @private
+     */
+    private determinarPerfilUsuario(usuario: any): PerfilUsuarioData | null {
         if (usuario.padres) {
             return {
                 tipo: 'padre',
@@ -389,5 +395,25 @@ export class Auth0UsersService {
         }
 
         return null;
+    }
+
+    /**
+     * Normaliza el nombre de un rol para procesar de manera uniforme
+     * @private
+     */
+    private normalizeRoleName(roleName: string): string {
+        const roleMapping = {
+            'admin': 'admin',
+            'padre_familia': 'padre_familia',
+            'padre': 'padre_familia',
+            'estudiante': 'estudiante',
+            'profesor': 'profesor',
+            'tesorero': 'tesorero',
+            'comite': 'comite',
+            'institucion_educativa': 'institucion_educativa'
+        };
+
+        const normalizedName = roleName.toLowerCase();
+        return roleMapping[normalizedName] || normalizedName;
     }
 }

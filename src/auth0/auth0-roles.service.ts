@@ -1,16 +1,34 @@
-// src/auth0/services/auth0-roles.service.ts
-
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+export interface Auth0Role {
+    id: string;
+    name: string;
+    description?: string;
+}
 
 @Injectable()
 export class Auth0RolesService {
     private readonly logger = new Logger(Auth0RolesService.name);
     private readonly apiUrl: string;
     private readonly domain: string;
+    private readonly clientId: string;
+    private readonly clientSecret: string;
+
+    // Mapeo de roles de Auth0 a roles locales
+    private readonly roleMapping = {
+        'admin': 'admin',
+        'padre_familia': 'padre_familia',
+        'padre': 'padre_familia',
+        'estudiante': 'estudiante',
+        'profesor': 'profesor',
+        'tesorero': 'tesorero',
+        'comite': 'comite',
+        'institucion_educativa': 'institucion_educativa'
+    };
 
     constructor(
         private configService: ConfigService,
@@ -18,13 +36,37 @@ export class Auth0RolesService {
         private prisma: PrismaService,
     ) {
         this.domain = this.configService.get<string>('AUTH0_DOMAIN');
+        this.clientId = this.configService.get<string>('AUTH0_CLIENT_ID');
+        this.clientSecret = this.configService.get<string>('AUTH0_CLIENT_SECRET');
         this.apiUrl = `https://${this.domain}/api/v2`;
+    }
+
+    /**
+     * Obtiene el token de gestión de Auth0
+     */
+    async getManagementApiToken(): Promise<string> {
+        try {
+            const response = await firstValueFrom(
+                this.httpService.post(`https://${this.domain}/oauth/token`, {
+                    client_id: this.clientId,
+                    client_secret: this.clientSecret,
+                    audience: `https://${this.domain}/api/v2/`,
+                    grant_type: 'client_credentials',
+                    scope: 'read:users read:roles update:users create:users delete:users',
+                })
+            );
+
+            return response.data.access_token;
+        } catch (error) {
+            this.logger.error(`Error al obtener token de gestión: ${error.message}`);
+            throw new Error('Error al obtener token de gestión');
+        }
     }
 
     /**
      * Obtiene los roles disponibles en Auth0.
      */
-    async getAvailableRoles(token?: string): Promise<any[]> {
+    async getAvailableRoles(token?: string): Promise<Auth0Role[]> {
         try {
             if (!token) {
                 token = await this.getManagementApiToken();
@@ -48,7 +90,7 @@ export class Auth0RolesService {
     /**
      * Obtiene los roles de un usuario.
      */
-    async getUserRoles(userId: string, token?: string): Promise<any[]> {
+    async getUserRoles(userId: string, token?: string): Promise<Auth0Role[]> {
         try {
             if (!token) {
                 token = await this.getManagementApiToken();
@@ -109,6 +151,8 @@ export class Auth0RolesService {
                 // Buscar o crear rol en la base de datos local
                 await this.findOrCreateLocalRole(role.name);
             }
+
+            this.logger.log('Roles sincronizados correctamente con Auth0');
         } catch (error) {
             this.logger.error(`Error al sincronizar roles locales: ${error.message}`);
             throw new Error('Error al sincronizar roles locales con Auth0');
@@ -120,21 +164,9 @@ export class Auth0RolesService {
      */
     async findOrCreateLocalRole(roleName: string): Promise<any> {
         try {
-            // Mapeo de roles de Auth0 a roles locales
-            const roleMapping = {
-                'admin': 'admin',
-                'padre_familia': 'padre_familia',
-                'padre': 'padre_familia',
-                'estudiante': 'estudiante',
-                'profesor': 'profesor',
-                'tesorero': 'tesorero',
-                'comite': 'comite',
-                'institucion_educativa': 'institucion_educativa'
-            };
-
             // Normalizar el nombre del rol y aplicar mapeo si existe
             const normalizedName = roleName.toLowerCase();
-            const mappedName = roleMapping[normalizedName] || normalizedName;
+            const mappedName = this.roleMapping[normalizedName] || normalizedName;
 
             // Buscar el rol en la base de datos
             let role = await this.prisma.rol.findFirst({
@@ -146,7 +178,7 @@ export class Auth0RolesService {
                 }
             });
 
-            // Si no existe, crearlo
+            //  Si no existe, crearlo
             if (!role) {
                 this.logger.log(`Creando nuevo rol local: ${mappedName}`);
                 role = await this.prisma.rol.create({
@@ -175,26 +207,4 @@ export class Auth0RolesService {
             throw new Error(`Error al mapear rol ${auth0RoleName} a ID local`);
         }
     }
-
-    /**
-     * Obtiene el token de gestión
-     */
-    private async getManagementApiToken(): Promise<string> {
-        try {
-            const response = await firstValueFrom(
-                this.httpService.post(`https://${this.domain}/oauth/token`, {
-                    client_id: this.configService.get<string>('AUTH0_CLIENT_ID'),
-                    client_secret: this.configService.get<string>('AUTH0_CLIENT_SECRET'),
-                    audience: `https://${this.domain}/api/v2/`,
-                    grant_type: 'client_credentials',
-                    scope: 'read:users read:roles',
-                })
-            );
-
-            return response.data.access_token;
-        } catch (error) {
-            this.logger.error(`Error al obtener token de gestión: ${error.message}`);
-            throw new Error('Error al obtener token de gestión');
-        }
-    }
-}
+} 

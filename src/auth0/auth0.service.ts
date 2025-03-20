@@ -1,4 +1,4 @@
-// src/auth0/services/auth0.service.ts
+// src/auth0/auth0.service.ts
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -6,6 +6,28 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Auth0RolesService } from './auth0-roles.service';
 import { Auth0UsersService } from './auth0-users.service';
+
+// Interfaces para estandarizar la respuesta
+export interface AuthTokens {
+  access_token: string;
+  id_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+export interface UserInfo {
+  sub: string;
+  name: string;
+  email: string;
+  picture: string;
+  roles: string[];
+  userId: string;
+}
+
+export interface AuthResponse {
+  tokens: AuthTokens;
+  user: UserInfo;
+}
 
 @Injectable()
 export class Auth0Service {
@@ -51,8 +73,9 @@ export class Auth0Service {
 
   /**
    * Inicia sesión con email y contraseña.
+   * @returns Respuesta estandarizada con tokens y datos del usuario
    */
-  async loginWithEmail(email: string, password: string): Promise<any> {
+  async loginWithEmail(email: string, password: string): Promise<AuthResponse> {
     try {
       // 1. Autenticación con Auth0
       const response = await firstValueFrom(
@@ -76,21 +99,8 @@ export class Auth0Service {
 
       // 3. Sincronizar usuario y roles con la base de datos local
       const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
-      return {
-        tokens: {
-          access_token: tokenData.access_token,
-          id_token: tokenData.id_token,
-          refresh_token: tokenData.refresh_token,
-        },
-        user: {
-          sub: userInfo.sub,
-          name: userInfo.name,
-          email: userInfo.email,
-          picture: userInfo.picture,
-          roles: roles.map(role => role.name),
-          userId: localUser.id,
-        },
-      };
+
+      return this._formatAuthResponse(tokenData, userInfo, roles, localUser.id);
     } catch (error) {
       this.logger.error(`Error en loginWithEmail: ${error.message}`);
       throw new Error(error.response?.data?.error_description || 'Error al iniciar sesión');
@@ -99,8 +109,15 @@ export class Auth0Service {
 
   /**
    * Registra un nuevo usuario y asigna un rol
+   * @returns Respuesta estandarizada con tokens y datos del usuario
    */
-  async registerUser(email: string, password: string, role: string, fullName: string, perfilData?: any): Promise<any> {
+  async registerUser(
+    email: string,
+    password: string,
+    role: string,
+    fullName: string,
+    perfilData?: any
+  ): Promise<AuthResponse> {
     try {
       // 1. Validar rol
       const availableRoles = await this.auth0RolesService.getAvailableRoles();
@@ -129,10 +146,8 @@ export class Auth0Service {
         perfilData
       );
 
-      return {
-        auth0User,
-        localUser
-      };
+      // 5. Iniciar sesión automáticamente para obtener tokens
+      return await this.loginWithEmail(email, password);
     } catch (error) {
       this.logger.error(`Error al registrar usuario: ${error.message}`);
 
@@ -153,8 +168,9 @@ export class Auth0Service {
 
   /**
    * Renueva el access_token usando el refresh_token.
+   * @returns Respuesta estandarizada con tokens y datos del usuario
    */
-  async refreshAccessToken(refreshToken: string): Promise<any> {
+  async refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
     try {
       const response = await firstValueFrom(
         this.httpService.post(`https://${this.domain}/oauth/token`, {
@@ -171,21 +187,8 @@ export class Auth0Service {
       const userInfo = await this.auth0UsersService.getUserInfo(tokenData.access_token);
       const roles = await this.auth0RolesService.getUserRoles(userInfo.sub);
       const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
-      return {
-        tokens: {
-          access_token: tokenData.access_token,
-          id_token: tokenData.id_token,
-          refresh_token: tokenData.refresh_token,
-        },
-        user: {
-          sub: userInfo.sub,
-          name: userInfo.name,
-          email: userInfo.email,
-          picture: userInfo.picture,
-          roles: roles.map(role => role.name),
-          userId: localUser.id,
-        },
-      };
+
+      return this._formatAuthResponse(tokenData, userInfo, roles, localUser.id);
     } catch (error) {
       this.logger.error(`Error al renovar token: ${error.message}`);
       throw new Error('Error al renovar el token');
@@ -193,23 +196,51 @@ export class Auth0Service {
   }
 
   /**
-   * Obtiene todos los roles disponibles (delegado al servicio de roles)
+   * Obtiene todos los roles disponibles
    */
   async getAvailableRoles(): Promise<any[]> {
     return this.auth0RolesService.getAvailableRoles();
   }
 
   /**
-   * Obtiene los roles de un usuario (delegado al servicio de roles)
+   * Obtiene los roles de un usuario
    */
   async getUserRoles(userId: string): Promise<any[]> {
     return this.auth0RolesService.getUserRoles(userId);
   }
 
   /**
-   * Obtiene la información de un usuario (delegado al servicio de usuarios)
+   * Obtiene el perfil completo de un usuario
    */
   async getUserProfile(userId: string, accessToken: string): Promise<any> {
     return this.auth0UsersService.getUserProfile(userId, accessToken);
+  }
+
+  /**
+   * Formatea la respuesta de autenticación para mantener consistencia
+   * @private
+   */
+  private _formatAuthResponse(
+    tokenData: any,
+    userInfo: any,
+    roles: any[],
+    localUserId: string
+  ): AuthResponse {
+    return {
+      tokens: {
+        access_token: tokenData.access_token,
+        id_token: tokenData.id_token,
+        refresh_token: tokenData.refresh_token,
+        expires_in: tokenData.expires_in || 86400
+      },
+      user: {
+        sub: userInfo.sub,
+        name: userInfo.name,
+        email: userInfo.email,
+        picture: userInfo.picture,
+        roles: roles.map(role => role.name),
+        userId: localUserId,
+      },
+    };
   }
 }
