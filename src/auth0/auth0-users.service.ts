@@ -277,4 +277,117 @@ export class Auth0UsersService {
             throw new Error('Error al obtener token de gestión');
         }
     }
+
+    async getUserProfile(userId: string, accessToken: string): Promise<any> {
+        try {
+            // 1. Obtener información del usuario desde Auth0
+            const userInfo = await this.getUserInfo(accessToken);
+
+            // 2. Obtener datos del usuario de la base de datos local
+            const localUser = await this.prisma.usuario.findUnique({
+                where: { auth0Id: userId },
+                include: {
+                    roles: {
+                        include: {
+                            rol: true
+                        }
+                    },
+                    padres: true,
+                    estudiante: {
+                        include: {
+                            curso: true
+                        }
+                    },
+                    profesor: {
+                        include: {
+                            cursos: {
+                                include: {
+                                    curso: true
+                                }
+                            }
+                        }
+                    },
+                    tesorero: {
+                        include: {
+                            curso: true
+                        }
+                    },
+                    estadoAprobacion: true
+                }
+            });
+
+            if (!localUser) {
+                throw new Error('Usuario no encontrado en la base de datos local');
+            }
+
+            // 3. Obtener roles del usuario desde Auth0
+            const userRoles = await this.auth0RolesService.getUserRoles(userId);
+
+            // 4. Construir y retornar respuesta completa
+            return {
+                auth0: {
+                    sub: userInfo.sub,
+                    email: userInfo.email,
+                    name: userInfo.name,
+                    picture: userInfo.picture
+                },
+                local: {
+                    id: localUser.id,
+                    roles: localUser.roles.map(r => r.rol.nombre),
+                    perfil: this.determinarPerfilUsuario(localUser),
+                    estadoAprobacion: localUser.estadoAprobacion
+                }
+            };
+        } catch (error) {
+            this.logger.error(`Error al obtener perfil de usuario: ${error.message}`);
+            throw new Error(`Error al obtener perfil: ${error.message}`);
+        }
+    }
+
+    private determinarPerfilUsuario(usuario: any) {
+        if (usuario.padres) {
+            return {
+                tipo: 'padre',
+                datos: usuario.padres
+            };
+        }
+
+        if (usuario.estudiante) {
+            return {
+                tipo: 'estudiante',
+                datos: {
+                    ...usuario.estudiante,
+                    cursoNombre: usuario.estudiante.curso ?
+                        `${usuario.estudiante.curso.nombre} ${usuario.estudiante.curso.paralelo}` : null
+                }
+            };
+        }
+
+        if (usuario.profesor) {
+            return {
+                tipo: 'profesor',
+                datos: {
+                    ...usuario.profesor,
+                    cursos: usuario.profesor.cursos.map(c => ({
+                        cursoId: c.cursoId,
+                        esTutor: c.esTutor,
+                        nombreCurso: c.curso ? `${c.curso.nombre} ${c.curso.paralelo}` : null
+                    }))
+                }
+            };
+        }
+
+        if (usuario.tesorero) {
+            return {
+                tipo: 'tesorero',
+                datos: {
+                    ...usuario.tesorero,
+                    cursoNombre: usuario.tesorero.curso ?
+                        `${usuario.tesorero.curso.nombre} ${usuario.tesorero.curso.paralelo}` : null
+                }
+            };
+        }
+
+        return null;
+    }
 }

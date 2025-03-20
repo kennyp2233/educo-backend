@@ -76,7 +76,6 @@ export class Auth0Service {
 
       // 3. Sincronizar usuario y roles con la base de datos local
       const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
-
       return {
         tokens: {
           access_token: tokenData.access_token,
@@ -166,10 +165,26 @@ export class Auth0Service {
         })
       );
 
+      const tokenData = response.data;
+
+      // Obtener información del usuario usando el nuevo access_token
+      const userInfo = await this.auth0UsersService.getUserInfo(tokenData.access_token);
+      const roles = await this.auth0RolesService.getUserRoles(userInfo.sub);
+      const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
       return {
-        access_token: response.data.access_token,
-        id_token: response.data.id_token,
-        refresh_token: response.data.refresh_token,
+        tokens: {
+          access_token: tokenData.access_token,
+          id_token: tokenData.id_token,
+          refresh_token: tokenData.refresh_token,
+        },
+        user: {
+          sub: userInfo.sub,
+          name: userInfo.name,
+          email: userInfo.email,
+          picture: userInfo.picture,
+          roles: roles.map(role => role.name),
+          userId: localUser.id,
+        },
       };
     } catch (error) {
       this.logger.error(`Error al renovar token: ${error.message}`);
@@ -189,5 +204,12 @@ export class Auth0Service {
    */
   async getUserRoles(userId: string): Promise<any[]> {
     return this.auth0RolesService.getUserRoles(userId);
+  }
+
+  /**
+   * Obtiene la información de un usuario (delegado al servicio de usuarios)
+   */
+  async getUserProfile(userId: string, accessToken: string): Promise<any> {
+    return this.auth0UsersService.getUserProfile(userId, accessToken);
   }
 }

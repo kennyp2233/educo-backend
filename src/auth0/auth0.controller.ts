@@ -96,4 +96,6 @@ export class Auth0Controller {
     async testRoleGuard() {
         return { message: 'Si puedes ver esto, tienes el rol de administrador' };
     }
+
+
 }
