@@ -103,7 +103,6 @@ export class Auth0Controller {
         return { message: 'Si puedes ver esto, tienes el rol de administrador' };
     }
 
-    // src/auth0/auth0.controller.ts
     @Get('user-profile')
     @UseGuards(AuthGuard('jwt'))
     async getUserProfile(@Req() req: RequestWithUser) {
@@ -111,20 +110,11 @@ export class Auth0Controller {
             const auth0Id = req.user.sub;
 
             // Obtener usuario desde el servicio de usuarios
-            // Usamos el método que sí existe en tu backend
             const usuario = await this.usuariosService.buscarPorAuth0Id(auth0Id);
 
             if (!usuario) {
                 throw new NotFoundException('Usuario no encontrado');
             }
-
-            // Información del usuario desde el token JWT
-            const userInfo = {
-                sub: auth0Id,
-                name: req.user.name || '',
-                email: req.user.email || '',
-                picture: req.user.picture || null
-            };
 
             // Obtener roles del usuario
             let roles = [];
@@ -137,7 +127,37 @@ export class Auth0Controller {
                 roles = roles.map(rolNombre => ({ name: rolNombre }));
             }
 
-            // Respuesta con formato similar a loginWithEmail
+            // Obtener información adicional del usuario desde Auth0
+            let userInfo = {
+                sub: auth0Id,
+                name: req.user.name || '',
+                email: req.user.email || '',
+                picture: req.user.picture || null
+            };
+
+            // Si falta información, intentar obtenerla desde el servicio de Auth0
+            if (!userInfo.name || !userInfo.email || !userInfo.picture) {
+                try {
+                    // Obtener token de gestión para acceder a la API de Auth0
+                    const token = req.headers.authorization.split(' ')[1];
+
+                    // Obtener perfil completo de Auth0
+                    const auth0Profile = await this.auth0UsersService.getUserInfo(token);
+
+                    // Actualizar información faltante
+                    userInfo = {
+                        ...userInfo,
+                        name: auth0Profile.name || userInfo.name,
+                        email: auth0Profile.email || userInfo.email,
+                        picture: auth0Profile.picture || userInfo.picture
+                    };
+                } catch (error) {
+                    console.error('Error al obtener perfil desde Auth0:', error);
+                    // Continuamos con la información que tenemos
+                }
+            }
+
+            // Respuesta con la información del usuario
             return {
                 user: {
                     sub: auth0Id,
