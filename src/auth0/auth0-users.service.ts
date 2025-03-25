@@ -143,13 +143,18 @@ export class Auth0UsersService {
 
                 // Sincronizar roles
                 if (roles && roles.length > 0) {
-                    const currentRoleIds = usuario.roles?.map(r => r.rolId) || [];
+                    const currentRoles = usuario.roles.map(r => ({
+                        rolId: r.rolId,
+                        rolNombre: r.rol.nombre.toLowerCase()
+                    }));
+
                     for (const role of roles) {
                         // Obtener ID del rol local correspondiente
                         const rolId = await this.auth0RolesService.mapAuth0RoleToLocalId(role.name);
+                        const rolExistente = currentRoles.find(r => r.rolId === rolId);
 
-                        // Verificar si ya tiene este rol asignado
-                        if (!currentRoleIds.includes(rolId)) {
+                        // Si no tiene este rol asignado, asignarlo con estado PENDIENTE
+                        if (!rolExistente) {
                             // Verificar que el rol existe en la BD local
                             const rolExists = await prisma.rol.findUnique({ where: { id: rolId } });
 
@@ -162,11 +167,12 @@ export class Auth0UsersService {
                                 });
                             }
 
-                            // Asignar rol al usuario
+                            // Asignar rol al usuario con estado PENDIENTE
                             await prisma.usuarioRol.create({
                                 data: {
                                     usuarioId: usuario.id,
-                                    rolId: rolId
+                                    rolId: rolId,
+                                    estadoAprobacion: 'PENDIENTE'
                                 }
                             });
                         }
@@ -205,11 +211,12 @@ export class Auth0UsersService {
                     data: { auth0Id }
                 });
 
-                // 3. Asignar rol
+                // 3. Asignar rol con estado PENDIENTE por defecto
                 await prisma.usuarioRol.create({
                     data: {
                         usuarioId: usuario.id,
-                        rolId
+                        rolId,
+                        estadoAprobacion: 'PENDIENTE'
                     }
                 });
 
@@ -277,125 +284,6 @@ export class Auth0UsersService {
         }
     }
 
-    /**
-     * Obtiene el perfil completo de un usuario
-     */
-    async getUserProfile(userId: string, accessToken: string): Promise<any> {
-        try {
-            // 1. Obtener información del usuario desde Auth0
-            const userInfo = await this.getUserInfo(accessToken);
-
-            // 2. Obtener datos del usuario de la base de datos local
-            const localUser = await this.prisma.usuario.findUnique({
-                where: { auth0Id: userId },
-                include: {
-                    roles: {
-                        include: {
-                            rol: true
-                        }
-                    },
-                    padres: true,
-                    estudiante: {
-                        include: {
-                            curso: true
-                        }
-                    },
-                    profesor: {
-                        include: {
-                            cursos: {
-                                include: {
-                                    curso: true
-                                }
-                            }
-                        }
-                    },
-                    tesorero: {
-                        include: {
-                            curso: true
-                        }
-                    },
-                    estadoAprobacion: true
-                }
-            });
-
-            if (!localUser) {
-                throw new NotFoundException('Usuario no encontrado en la base de datos local');
-            }
-
-            // 3. Obtener roles del usuario desde Auth0
-            const userRoles = await this.auth0RolesService.getUserRoles(userId);
-
-            // 4. Construir y retornar respuesta completa
-            return {
-                auth0: {
-                    sub: userInfo.sub,
-                    email: userInfo.email,
-                    name: userInfo.name,
-                    picture: userInfo.picture
-                },
-                local: {
-                    id: localUser.id,
-                    roles: localUser.roles.map(r => r.rol.nombre),
-                    perfil: this.determinarPerfilUsuario(localUser),
-                    estadoAprobacion: localUser.estadoAprobacion
-                }
-            };
-        } catch (error) {
-            this.logger.error(`Error al obtener perfil de usuario: ${error.message}`);
-            throw new Error(`Error al obtener perfil: ${error.message}`);
-        }
-    }
-
-    /**
-     * Determina el tipo de perfil de un usuario
-     * @private
-     */
-    private determinarPerfilUsuario(usuario: any): PerfilUsuarioData | null {
-        if (usuario.padres) {
-            return {
-                tipo: 'padre',
-                datos: usuario.padres
-            };
-        }
-
-        if (usuario.estudiante) {
-            return {
-                tipo: 'estudiante',
-                datos: {
-                    ...usuario.estudiante,
-                    cursoNombre: usuario.estudiante.curso ?
-                        `${usuario.estudiante.curso.nombre} ${usuario.estudiante.curso.paralelo}` : null
-                }
-            };
-        }
-
-        if (usuario.profesor) {
-            return {
-                tipo: 'profesor',
-                datos: {
-                    ...usuario.profesor,
-                    cursos: usuario.profesor.cursos.map(c => ({
-                        cursoId: c.cursoId,
-                        esTutor: c.esTutor,
-                        nombreCurso: c.curso ? `${c.curso.nombre} ${c.curso.paralelo}` : null
-                    }))
-                }
-            };
-        }
-
-        if (usuario.tesorero) {
-            return {
-                tipo: 'tesorero',
-                datos: {
-                    ...usuario.tesorero,
-                    cursoNombre: usuario.tesorero.curso ?
-                        `${usuario.tesorero.curso.nombre} ${usuario.tesorero.curso.paralelo}` : null
-                }
-            };
-        }
-
-        return null;
-    }
 
     /**
      * Normaliza el nombre de un rol para procesar de manera uniforme

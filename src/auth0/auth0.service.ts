@@ -209,12 +209,7 @@ export class Auth0Service {
     return this.auth0RolesService.getUserRoles(userId);
   }
 
-  /**
-   * Obtiene el perfil completo de un usuario
-   */
-  async getUserProfile(userId: string, accessToken: string): Promise<any> {
-    return this.auth0UsersService.getUserProfile(userId, accessToken);
-  }
+
 
   /**
    * Formatea la respuesta de autenticación para mantener consistencia

@@ -18,10 +18,8 @@ model Usuario {
   tesorero       Tesorero?
   notificaciones Notificacion[]
 
-  // Campos para aprobaciones
-  estadoAprobacion       EstadoAprobacion?
-  aprobacionesRealizadas EstadoAprobacion[] @relation("AprobadorUsuario")
-  permisosAprobados      Permiso[]          @relation("AprobadorPermiso")
+  permisosAprobados Permiso[]    @relation("AprobadorPermiso")
+  rolesAprobados    UsuarioRol[] @relation("AprobadorUsuarioRol")
 }
 
 model Rol {
@@ -31,10 +29,16 @@ model Rol {
 }
 
 model UsuarioRol {
-  usuarioId String  @default(uuid()) @map("usuario_id")
-  rolId     Int
-  usuario   Usuario @relation(fields: [usuarioId], references: [id])
-  rol       Rol     @relation(fields: [rolId], references: [id])
+  usuarioId        String    @default(uuid()) @map("usuario_id")
+  rolId            Int
+  estadoAprobacion String    @default("PENDIENTE") // "PENDIENTE", "APROBADO", "RECHAZADO"
+  aprobadorId      String?
+  fechaAprobacion  DateTime?
+  comentarios      String?
+
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id])
+  rol       Rol      @relation(fields: [rolId], references: [id])
+  aprobador Usuario? @relation("AprobadorUsuarioRol", fields: [aprobadorId], references: [id])
 
   @@id([usuarioId, rolId])
 }
@@ -192,16 +196,4 @@ model Notificacion {
   fecha             DateTime @default(now())
   leida             Boolean  @default(false)
   usuarioReceptor   Usuario  @relation(fields: [usuarioReceptorId], references: [id])
-}
-
-model EstadoAprobacion {
-  id              Int       @id @default(autoincrement())
-  usuarioId       String    @unique
-  usuario         Usuario   @relation(fields: [usuarioId], references: [id])
-  estadoActual    String // "PENDIENTE", "APROBADO", "RECHAZADO"
-  aprobadorId     String?
-  aprobador       Usuario?  @relation("AprobadorUsuario", fields: [aprobadorId], references: [id])
-  fechaSolicitud  DateTime  @default(now())
-  fechaResolucion DateTime?
-  comentarios     String?
 }

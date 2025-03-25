@@ -10,11 +10,12 @@ import {
     ValidationPipe,
     NotFoundException,
     BadRequestException,
-    UnauthorizedException
+    UnauthorizedException,
+    ParseIntPipe,
+    Logger
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AprobacionesService } from './aprobaciones.service';
-import { SolicitarAprobacionDto } from './dto/solicitar-aprobacion.dto';
 import { ResolverAprobacionDto } from './dto/resolver-aprobacion.dto';
 import { VincularEstudianteDto } from './dto/vincular-estudiante.dto';
 import { Request } from 'express';
@@ -30,34 +31,38 @@ interface RequestWithUser extends Request {
 @Controller('aprobaciones')
 @UseGuards(AuthGuard('jwt'))
 export class AprobacionesController {
+    private readonly logger = new Logger(AprobacionesController.name);
+
     constructor(
         private readonly aprobacionesService: AprobacionesService,
         private readonly usuariosService: UsuariosService
     ) { }
 
     /**
-     * Solicitar aprobación de perfil
+     * Solicitar aprobación de un rol específico
      */
-    @Post('perfil/:id')
-    async solicitarAprobacionPerfil(
-        @Param('id') id: string
+    @Post('rol/:usuarioId/:rolId')
+    async solicitarAprobacionRol(
+        @Param('usuarioId') usuarioId: string,
+        @Param('rolId', ParseIntPipe) rolId: number
     ) {
         try {
-            return await this.aprobacionesService.solicitarAprobacionPerfil(id);
+            return await this.aprobacionesService.solicitarAprobacionRol(usuarioId, rolId);
         } catch (error) {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al solicitar aprobación');
+            throw new BadRequestException(error.message || 'Error al solicitar aprobación de rol');
         }
     }
 
     /**
-     * Resolver aprobación (aprobar o rechazar)
+     * Resolver aprobación de rol (aprobar o rechazar)
      */
-    @Post('perfil/:id/resolver')
-    async resolverAprobacion(
-        @Param('id') id: string,
+    @Post('rol/:usuarioId/:rolId/resolver')
+    async resolverAprobacionRol(
+        @Param('usuarioId') usuarioId: string,
+        @Param('rolId', ParseIntPipe) rolId: number,
         @Body(new ValidationPipe()) data: ResolverAprobacionDto,
         @Req() req: RequestWithUser
     ) {
@@ -65,59 +70,53 @@ export class AprobacionesController {
             // Obtener el ID del usuario que está haciendo la aprobación (del token JWT)
             const aprobadorId = await this.getUserIdFromAuth0(req.user.sub);
 
-            return await this.aprobacionesService.resolverAprobacion(id, aprobadorId, data);
-        } catch (error) {
-            if (error instanceof NotFoundException) {
-                throw error;
-            }
-            throw new BadRequestException(error.message || 'Error al resolver aprobación');
-        }
-    }
-
-    /**
-     * Solicitar vinculación padre-estudiante
-     */
-    @Post('vinculacion')
-    async solicitarVinculacion(
-        @Body(new ValidationPipe()) data: VincularEstudianteDto
-    ) {
-        try {
-            return await this.aprobacionesService.solicitarVinculacion(data);
-        } catch (error) {
-            if (error instanceof NotFoundException) {
-                throw error;
-            }
-            throw new BadRequestException(error.message || 'Error al solicitar vinculación');
-        }
-    }
-
-    /**
-     * Aprobar vinculación padre-estudiante
-     */
-    @Post('vinculacion/:padreId/:estudianteId/aprobar')
-    async aprobarVinculacion(
-        @Param('padreId') padreId: string,
-        @Param('estudianteId') estudianteId: string,
-        @Body('aprobado') aprobado: boolean,
-        @Body('comentarios') comentarios: string,
-        @Req() req: RequestWithUser
-    ) {
-        try {
-            // Obtener el ID del usuario que está haciendo la aprobación (del token JWT)
-            const aprobadorId = await this.getUserIdFromAuth0(req.user.sub);
-
-            return await this.aprobacionesService.aprobarVinculacion(
-                padreId,
-                estudianteId,
+            return await this.aprobacionesService.resolverAprobacionRol(
+                usuarioId,
+                rolId,
                 aprobadorId,
-                aprobado,
-                comentarios
+                data
             );
         } catch (error) {
             if (error instanceof NotFoundException) {
                 throw error;
             }
-            throw new BadRequestException(error.message || 'Error al aprobar vinculación');
+            throw new BadRequestException(error.message || 'Error al resolver aprobación de rol');
+        }
+    }
+
+    /**
+     * Verificar si un usuario tiene un rol específico aprobado
+     */
+    @Get('verificar/:usuarioId/:rolNombre')
+    async verificarRolAprobado(
+        @Param('usuarioId') usuarioId: string,
+        @Param('rolNombre') rolNombre: string
+    ) {
+        try {
+            const aprobado = await this.aprobacionesService.verificarRolAprobado(usuarioId, rolNombre);
+            return { aprobado };
+        } catch (error) {
+            throw new BadRequestException(error.message || 'Error al verificar aprobación de rol');
+        }
+    }
+
+    /**
+     * Verificar si el usuario actual puede aprobar a otro para un rol específico
+     */
+    @Get('puede-aprobar/:usuarioId/:rolId')
+    async verificarPuedeAprobarRol(
+        @Param('usuarioId') usuarioId: string,
+        @Param('rolId', ParseIntPipe) rolId: number,
+        @Req() req: RequestWithUser
+    ) {
+        try {
+            // Obtener el ID del usuario actual (del token JWT)
+            const aprobadorId = await this.getUserIdFromAuth0(req.user.sub);
+
+            const puedeAprobar = await this.aprobacionesService.puedeAprobarRol(aprobadorId, usuarioId, rolId);
+            return { puedeAprobar };
+        } catch (error) {
+            return { puedeAprobar: false };
         }
     }
 
@@ -140,21 +139,59 @@ export class AprobacionesController {
     }
 
     /**
-     * Verificar si el usuario actual puede aprobar a otro
+     * Solicitar vinculación padre-estudiante (mantener compatibilidad con sistema anterior)
      */
-    @Get('puede-aprobar/:id')
-    async verificarPuedeAprobar(
-        @Param('id') id: string,
+    @Post('vinculacion')
+    async solicitarVinculacion(
+        @Body(new ValidationPipe()) data: VincularEstudianteDto
+    ) {
+        try {
+            // Si el servicio mantiene este método, utilizarlo
+            if (typeof this.aprobacionesService.solicitarVinculacion === 'function') {
+                return await this.aprobacionesService.solicitarVinculacion(data);
+            } else {
+                throw new BadRequestException('Esta funcionalidad ha sido actualizada. Por favor, utilice el nuevo sistema de aprobación de roles.');
+            }
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException(error.message || 'Error al solicitar vinculación');
+        }
+    }
+
+    /**
+     * Aprobar vinculación padre-estudiante (mantener compatibilidad con sistema anterior)
+     */
+    @Post('vinculacion/:padreId/:estudianteId/aprobar')
+    async aprobarVinculacion(
+        @Param('padreId') padreId: string,
+        @Param('estudianteId') estudianteId: string,
+        @Body('aprobado') aprobado: boolean,
+        @Body('comentarios') comentarios: string,
         @Req() req: RequestWithUser
     ) {
         try {
-            // Obtener el ID del usuario actual (del token JWT)
-            const usuarioId = await this.getUserIdFromAuth0(req.user.sub);
+            // Obtener el ID del usuario que está haciendo la aprobación (del token JWT)
+            const aprobadorId = await this.getUserIdFromAuth0(req.user.sub);
 
-            const puedeAprobar = await this.aprobacionesService.puedeAprobar(usuarioId, id);
-            return { puedeAprobar };
+            // Si el servicio mantiene este método, utilizarlo
+            if (typeof this.aprobacionesService.aprobarVinculacion === 'function') {
+                return await this.aprobacionesService.aprobarVinculacion(
+                    padreId,
+                    estudianteId,
+                    aprobadorId,
+                    aprobado,
+                    comentarios
+                );
+            } else {
+                throw new BadRequestException('Esta funcionalidad ha sido actualizada. Por favor, utilice el nuevo sistema de aprobación de roles.');
+            }
         } catch (error) {
-            return { puedeAprobar: false };
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException(error.message || 'Error al aprobar vinculación');
         }
     }
 
