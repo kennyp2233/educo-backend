@@ -1,11 +1,12 @@
 // src/auth0/auth0.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Auth0RolesService } from './auth0-roles.service';
 import { Auth0UsersService } from './auth0-users.service';
+import { UsuariosService } from '../users/users.service';
 
 // Interfaces para estandarizar la respuesta
 export interface AuthTokens {
@@ -29,6 +30,23 @@ export interface AuthResponse {
   user: UserInfo;
 }
 
+export interface UserProfile {
+  auth0: {
+    sub: string;
+    name: string;
+    email: string;
+    picture?: string;
+  };
+  local: {
+    id: string;
+    roles: string[];
+    perfil?: {
+      tipo: string;
+      datos: any;
+    };
+  };
+}
+
 @Injectable()
 export class Auth0Service {
   private readonly logger = new Logger(Auth0Service.name);
@@ -42,6 +60,7 @@ export class Auth0Service {
     private httpService: HttpService,
     private auth0RolesService: Auth0RolesService,
     private auth0UsersService: Auth0UsersService,
+    private usuariosService: UsuariosService
   ) {
     this.domain = this.configService.get<string>('AUTH0_DOMAIN');
     this.clientId = this.configService.get<string>('AUTH0_CLIENT_ID');
@@ -209,7 +228,81 @@ export class Auth0Service {
     return this.auth0RolesService.getUserRoles(userId);
   }
 
+  /**
+   * Obtiene el perfil completo del usuario (Auth0 + local)
+   */
+  async getUserProfile(token: string): Promise<UserProfile> {
+    try {
+      // 1. Obtener información del usuario desde Auth0
+      const auth0Profile = await this.auth0UsersService.getUserInfo(token);
 
+      // 2. Buscar usuario en la base de datos local con sus relaciones
+      const localUser = await this.usuariosService.buscarPorAuth0Id(auth0Profile.sub, true);
+
+      if (!localUser) {
+        throw new NotFoundException('Usuario no encontrado en sistema local');
+      }
+
+      // 3. Obtener roles del usuario
+      const roles = await this.usuariosService.obtenerRolesUsuario(localUser.id);
+
+      // 4. Construir objeto de perfil
+      const perfil: UserProfile = {
+        auth0: {
+          sub: auth0Profile.sub,
+          name: auth0Profile.name,
+          email: auth0Profile.email,
+          picture: auth0Profile.picture
+        },
+        local: {
+          id: localUser.id,
+          roles: roles
+        }
+      };
+
+      // 5. Añadir información de perfil específica si existe
+      if (localUser.padres) {
+        perfil.local.perfil = {
+          tipo: 'padre',
+          datos: localUser.padres
+        };
+      } else if (localUser.estudiante) {
+        perfil.local.perfil = {
+          tipo: 'estudiante',
+          datos: localUser.estudiante
+        };
+      } else if (localUser.profesor) {
+        perfil.local.perfil = {
+          tipo: 'profesor',
+          datos: localUser.profesor
+        };
+      } else if (localUser.tesorero) {
+        perfil.local.perfil = {
+          tipo: 'tesorero',
+          datos: localUser.tesorero
+        };
+      }
+
+      return perfil;
+    } catch (error) {
+      this.logger.error(`Error al obtener perfil de usuario: ${error.message}`);
+      throw error;
+    }
+  }
+
+
+  /**
+   * Obtiene el ID de usuario local a partir del ID de Auth0
+   */
+  async getUserIdFromAuth0(auth0Id: string): Promise<string> {
+    const usuario = await this.usuariosService.buscarPorAuth0Id(auth0Id);
+
+    if (!usuario) {
+      throw new UnauthorizedException('Usuario no encontrado en el sistema local');
+    }
+
+    return usuario.id;
+  }
 
   /**
    * Formatea la respuesta de autenticación para mantener consistencia
@@ -233,7 +326,7 @@ export class Auth0Service {
         name: userInfo.name,
         email: userInfo.email,
         picture: userInfo.picture,
-        roles: roles.map(role => role.name),
+        roles: roles.map(role => typeof role === 'string' ? role : role.name),
         userId: localUserId,
       },
     };

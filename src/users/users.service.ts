@@ -31,23 +31,36 @@ export class UsuariosService {
     /**
      * Busca un usuario por su Auth0 ID
      */
-    async buscarPorAuth0Id(auth0Id: string): Promise<Usuario | null> {
-        return this.prisma.usuario.findUnique({
-            where: { auth0Id },
-            include: {
-                roles: {
-                    include: {
-                        rol: true
-                    }
-                },
-                padres: true,
-                estudiante: true,
-                profesor: true,
-                tesorero: true
-            }
-        });
-    }
+    // src/users/users.service.ts - fragmento actualizado
 
+    /**
+     * Busca un usuario por su Auth0 ID
+     * @param auth0Id ID de Auth0
+     * @param includeRelations Si es verdadero, incluye las relaciones (padre, estudiante, etc.)
+     */
+    async buscarPorAuth0Id(auth0Id: string, includeRelations: boolean = false): Promise<any | null> {
+
+        if (includeRelations) {
+            return this.prisma.usuario.findUnique({
+                where: { auth0Id },
+                include: {
+                    roles: {
+                        include: {
+                            rol: true
+                        }
+                    },
+                    padres: true,
+                    estudiante: true,
+                    profesor: true,
+                    tesorero: true
+                }
+            });
+        } else {
+            return this.prisma.usuario.findUnique({
+                where: { auth0Id }
+            });
+        }
+    }
     /**
      * Busca un usuario por su ID interno
      */
