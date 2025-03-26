@@ -28,10 +28,22 @@ export class UsuariosService {
 
     constructor(private prisma: PrismaService) { }
 
-    /**
-     * Busca un usuario por su Auth0 ID
-     */
-    // src/users/users.service.ts - fragmento actualizado
+    async verificarRolAprobado(usuarioId: string, rolNombre: string): Promise<boolean> {
+        const usuarioRol = await this.prisma.usuarioRol.findFirst({
+            where: {
+                usuarioId,
+                rol: {
+                    nombre: {
+                        equals: rolNombre,
+                        mode: 'insensitive'
+                    }
+                },
+                estadoAprobacion: 'APROBADO'
+            }
+        });
+
+        return !!usuarioRol;
+    }
 
     /**
      * Busca un usuario por su Auth0 ID

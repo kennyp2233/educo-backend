@@ -1,5 +1,5 @@
 // src/aprobaciones/dto/resolver-aprobacion.dto.ts
-import { IsNotEmpty, IsString, IsBoolean, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsBoolean, IsOptional, IsString } from 'class-validator';
 
 export class ResolverAprobacionDto {
     @IsNotEmpty()

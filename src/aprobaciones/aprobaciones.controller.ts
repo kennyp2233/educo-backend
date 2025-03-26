@@ -10,18 +10,18 @@ import {
     ValidationPipe,
     NotFoundException,
     BadRequestException,
-    UnauthorizedException,
-    ParseIntPipe,
-    Logger
+    Logger,
+    ParseIntPipe
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AprobacionesService } from './aprobaciones.service';
+import { SolicitarAprobacionDto, TipoAprobacion } from './dto/solicitar-aprobacion.dto';
 import { ResolverAprobacionDto } from './dto/resolver-aprobacion.dto';
 import { VincularEstudianteDto } from './dto/vincular-estudiante.dto';
-import { SolicitarAprobacionDto, TipoAprobacion } from './dto/solicitar-aprobacion.dto';
-import { Request } from 'express';
-import { Auth0Service } from '../auth0/auth0.service';
+import { AprobarRolDto } from './dto/aprobar-rol.dto';
+import { UsuariosService } from '../users/users.service';
 
+// Extender Request para incluir usuario de Auth0
 interface RequestWithUser extends Request {
     user: {
         sub: string;
@@ -36,7 +36,7 @@ export class AprobacionesController {
 
     constructor(
         private readonly aprobacionesService: AprobacionesService,
-        private readonly auth0Service: Auth0Service
+        private readonly usuariosService: UsuariosService
     ) { }
 
     /**
@@ -45,16 +45,20 @@ export class AprobacionesController {
     @Get('pendientes')
     async obtenerSolicitudesPendientes(@Req() req: RequestWithUser) {
         try {
-            // Obtener el ID del usuario actual (del token JWT)
-            const usuarioId = await this.auth0Service.getUserIdFromAuth0(req.user.sub);
-            return await this.aprobacionesService.obtenerSolicitudesPendientes(usuarioId);
+            // Obtener ID del usuario actual desde Auth0
+            const usuario = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
+            if (!usuario) {
+                throw new NotFoundException('Usuario no encontrado en el sistema');
+            }
+
+            return await this.aprobacionesService.obtenerSolicitudesPendientes(usuario.id);
         } catch (error) {
-            return this.handleError(error, 'Error al obtener solicitudes pendientes');
+            throw this.handleError(error, 'Error al obtener solicitudes pendientes');
         }
     }
 
     /**
-     * Solicitar aprobación
+     * Solicitar aprobación genérica
      */
     @Post('solicitar')
     async solicitarAprobacion(
@@ -63,12 +67,12 @@ export class AprobacionesController {
         try {
             return await this.aprobacionesService.solicitarAprobacion(solicitudDto);
         } catch (error) {
-            return this.handleError(error, 'Error al solicitar aprobación');
+            throw this.handleError(error, 'Error al solicitar aprobación');
         }
     }
 
     /**
-     * Solicitar aprobación de un rol específico
+     * Solicitar aprobación de rol específico
      */
     @Post('rol/:usuarioId/:rolId')
     async solicitarAprobacionRol(
@@ -78,7 +82,7 @@ export class AprobacionesController {
         try {
             return await this.aprobacionesService.solicitarAprobacionRol(usuarioId, rolId);
         } catch (error) {
-            return this.handleError(error, 'Error al solicitar aprobación de rol');
+            throw this.handleError(error, 'Error al solicitar aprobación de rol');
         }
     }
 
@@ -89,123 +93,108 @@ export class AprobacionesController {
     async resolverAprobacionRol(
         @Param('usuarioId') usuarioId: string,
         @Param('rolId', ParseIntPipe) rolId: number,
-        @Body(new ValidationPipe()) data: ResolverAprobacionDto,
+        @Body(new ValidationPipe()) resolverDto: ResolverAprobacionDto,
         @Req() req: RequestWithUser
     ) {
         try {
-            // Obtener el ID del usuario que está haciendo la aprobación (del token JWT)
-            const aprobadorId = await this.auth0Service.getUserIdFromAuth0(req.user.sub);
+            // Obtener ID del usuario que está aprobando
+            const aprobador = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
+            if (!aprobador) {
+                throw new NotFoundException('Usuario aprobador no encontrado en el sistema');
+            }
 
             return await this.aprobacionesService.resolverAprobacionRol(
                 usuarioId,
                 rolId,
-                aprobadorId,
-                data
+                aprobador.id,
+                resolverDto
             );
         } catch (error) {
-            return this.handleError(error, 'Error al resolver aprobación de rol');
+            throw this.handleError(error, 'Error al resolver aprobación de rol');
         }
     }
 
     /**
-     * Verificar si un usuario tiene un rol específico aprobado
-     */
-    @Get('verificar/:usuarioId/:rolNombre')
-    async verificarRolAprobado(
-        @Param('usuarioId') usuarioId: string,
-        @Param('rolNombre') rolNombre: string
-    ) {
-        try {
-            const aprobado = await this.aprobacionesService.verificarRolAprobado(usuarioId, rolNombre);
-            return { aprobado };
-        } catch (error) {
-            return this.handleError(error, 'Error al verificar aprobación de rol');
-        }
-    }
-
-    /**
-     * Verificar si el usuario actual puede aprobar a otro para un rol específico
-     */
-    @Get('puede-aprobar/:usuarioId/:rolId')
-    async verificarPuedeAprobarRol(
-        @Param('usuarioId') usuarioId: string,
-        @Param('rolId', ParseIntPipe) rolId: number,
-        @Req() req: RequestWithUser
-    ) {
-        try {
-            // Obtener el ID del usuario actual (del token JWT)
-            const aprobadorId = await this.auth0Service.getUserIdFromAuth0(req.user.sub);
-
-            const puedeAprobar = await this.aprobacionesService.puedeAprobarRol(aprobadorId, usuarioId, rolId);
-            return { puedeAprobar };
-        } catch (error) {
-            return { puedeAprobar: false };
-        }
-    }
-
-    /**
-     * Solicitar vinculación padre-estudiante (compatibilidad con sistema anterior)
+     * Solicitar vinculación padre-estudiante
      */
     @Post('vinculacion')
     async solicitarVinculacion(
-        @Body(new ValidationPipe()) data: VincularEstudianteDto
+        @Body(new ValidationPipe()) vincularDto: VincularEstudianteDto
     ) {
         try {
             return await this.aprobacionesService.solicitarVinculacion({
-                padreId: data.padreId,
-                estudianteId: data.estudianteId,
-                esRepresentante: data.esRepresentante
+                padreId: vincularDto.padreId,
+                estudianteId: vincularDto.estudianteId,
+                esRepresentante: vincularDto.esRepresentante
             });
         } catch (error) {
-            return this.handleError(error, 'Error al solicitar vinculación');
+            throw this.handleError(error, 'Error al solicitar vinculación padre-estudiante');
         }
     }
 
     /**
-     * Aprobar vinculación padre-estudiante (compatibilidad con sistema anterior)
+     * Resolver vinculación padre-estudiante
      */
-    @Post('vinculacion/:padreId/:estudianteId/aprobar')
-    async aprobarVinculacion(
+    @Post('vinculacion/:padreId/:estudianteId/resolver')
+    async resolverVinculacion(
         @Param('padreId') padreId: string,
         @Param('estudianteId') estudianteId: string,
-        @Body('aprobado') aprobado: boolean,
-        @Body('comentarios') comentarios: string,
+        @Body(new ValidationPipe()) resolverDto: ResolverAprobacionDto,
         @Req() req: RequestWithUser
     ) {
         try {
-            // Obtener el ID del usuario que está haciendo la aprobación (del token JWT)
-            const aprobadorId = await this.auth0Service.getUserIdFromAuth0(req.user.sub);
-
-            // Crear un DTO para resolver la aprobación
-            const resolverDto: ResolverAprobacionDto = {
-                aprobado,
-                comentarios
-            };
-
-            // Obtener el ID de la solicitud de vinculación
-            const solicitudId = await this.aprobacionesService.obtenerSolicitudVinculacion(padreId, estudianteId);
-
-            if (!solicitudId) {
-                throw new NotFoundException('No se encontró solicitud de vinculación para estos usuarios');
+            // Obtener ID del usuario que está aprobando
+            const aprobador = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
+            if (!aprobador) {
+                throw new NotFoundException('Usuario aprobador no encontrado en el sistema');
             }
 
-            return await this.aprobacionesService.resolverAprobacion(solicitudId, aprobadorId, resolverDto);
+            return await this.aprobacionesService.resolverVinculacion(
+                padreId,
+                estudianteId,
+                aprobador.id,
+                resolverDto
+            );
         } catch (error) {
-            return this.handleError(error, 'Error al aprobar vinculación');
+            throw this.handleError(error, 'Error al resolver vinculación padre-estudiante');
         }
     }
 
     /**
-     * Manejo de errores estandarizado
+     * Resolver aprobación de permiso
+     */
+    @Post('permiso/:permisoId/resolver')
+    async resolverPermiso(
+        @Param('permisoId', ParseIntPipe) permisoId: number,
+        @Body(new ValidationPipe()) resolverDto: ResolverAprobacionDto,
+        @Req() req: RequestWithUser
+    ) {
+        try {
+            // Obtener ID del usuario que está aprobando
+            const aprobador = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
+            if (!aprobador) {
+                throw new NotFoundException('Usuario aprobador no encontrado en el sistema');
+            }
+
+            return await this.aprobacionesService.resolverPermiso(
+                permisoId,
+                aprobador.id,
+                resolverDto
+            );
+        } catch (error) {
+            throw this.handleError(error, 'Error al resolver aprobación de permiso');
+        }
+    }
+
+    /**
+     * Método auxiliar para manejar errores de forma consistente
      */
     private handleError(error: any, defaultMessage: string) {
         if (error instanceof NotFoundException) {
             throw error;
         }
-        if (error instanceof UnauthorizedException) {
-            throw error;
-        }
-        this.logger.error(`${defaultMessage}: ${error.message}`);
+
+        this.logger.error(`${defaultMessage}: ${error.message}`, error.stack);
         throw new BadRequestException(error.message || defaultMessage);
     }
 }

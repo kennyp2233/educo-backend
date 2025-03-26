@@ -1,32 +1,45 @@
 // src/aprobaciones/dto/solicitar-aprobacion.dto.ts
-import { IsNotEmpty, IsString, IsOptional, IsEnum } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsEnum, IsBoolean, IsNumber } from 'class-validator';
 
 export enum TipoAprobacion {
-    PERFIL_USUARIO = 'PERFIL_USUARIO',
+    ROL_USUARIO = 'ROL_USUARIO',
     VINCULACION_PADRE_ESTUDIANTE = 'VINCULACION_PADRE_ESTUDIANTE',
-    ASIGNACION_TESORERO = 'ASIGNACION_TESORERO',
-    ASIGNACION_PROFESOR_CURSO = 'ASIGNACION_PROFESOR_CURSO',
-    ROL_USUARIO = 'ROL_USUARIO'
+    PERMISO = 'PERMISO'
 }
 
 export class SolicitarAprobacionDto {
     @IsNotEmpty()
+    @IsEnum(TipoAprobacion)
+    tipoAprobacion: TipoAprobacion;
+
+    // Campos para ROL_USUARIO
+    @IsOptional()
     @IsString()
-    usuarioId: string;
+    usuarioId?: string;
+
+    @IsOptional()
+    @IsNumber()
+    rolId?: number;
+
+    // Campos para VINCULACION_PADRE_ESTUDIANTE
+    @IsOptional()
+    @IsString()
+    padreId?: string;
 
     @IsOptional()
     @IsString()
-    entidadRelacionadaId?: string; // ID adicional para vinculaciones o asignaciones (estudiante, curso, etc.)
+    estudianteId?: string;
 
-    @IsNotEmpty()
-    @IsEnum(TipoAprobacion)
-    tipoAprobacion: TipoAprobacion;
+    @IsOptional()
+    @IsBoolean()
+    esRepresentante?: boolean;
+
+    // Campos para PERMISO
+    @IsOptional()
+    @IsNumber()
+    permisoId?: number;
 
     @IsOptional()
     @IsString()
     comentarios?: string;
-
-    @IsOptional()
-    @IsString()
-    datosAdicionales?: string; // Campo para almacenar datos adicionales en formato JSON
 }
