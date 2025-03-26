@@ -1,6 +1,16 @@
 // src/auth0/auth0.controller.ts
 
-import { Controller, Post, Body, HttpException, HttpStatus, Get, UseGuards, Req, NotFoundException } from '@nestjs/common';
+import {
+    Controller,
+    Post,
+    Body,
+    HttpException,
+    HttpStatus,
+    Get,
+    UseGuards,
+    Req,
+    NotFoundException
+} from '@nestjs/common';
 import { Auth0Service } from './auth0.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -9,8 +19,13 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
-import { UsuariosService } from 'src/users/users.service';
+import { UsuariosService } from '../users/users.service';
 import { Auth0UsersService } from './auth0-users.service';
+import {
+    AuthResponse,
+    ErrorResponse,
+    RegisterResponse
+} from './types/auth-response.types';
 
 interface RequestWithUser extends Request {
     user: {
@@ -28,45 +43,47 @@ export class Auth0Controller {
     ) { }
 
     @Post('login')
-    async login(@Body() loginDto: LoginDto) {
+    async login(@Body() loginDto: LoginDto): Promise<AuthResponse> {
         try {
             return await this.auth0Service.loginWithEmail(loginDto.email, loginDto.password);
         } catch (error) {
-            throw new HttpException(
-                error.message || 'Error al iniciar sesión',
-                HttpStatus.UNAUTHORIZED
-            );
+            const errorResponse: ErrorResponse = {
+                status: HttpStatus.UNAUTHORIZED,
+                message: error.message || 'Error al iniciar sesión'
+            };
+            throw new HttpException(errorResponse, HttpStatus.UNAUTHORIZED);
         }
     }
 
     @Post('register')
-    async register(@Body() registerDto: RegisterDto) {
+    async register(@Body() registerDto: RegisterDto): Promise<RegisterResponse> {
         try {
-            const user = await this.auth0Service.registerUser(
+            return await this.auth0Service.registerUser(
                 registerDto.email,
                 registerDto.password,
                 registerDto.role,
                 registerDto.fullName,
                 registerDto.perfilData
             );
-            return { success: true, message: 'Usuario registrado correctamente', user };
         } catch (error) {
-            throw new HttpException(
-                error.message || 'Error al registrar usuario',
-                HttpStatus.BAD_REQUEST
-            );
+            const errorResponse: ErrorResponse = {
+                status: HttpStatus.BAD_REQUEST,
+                message: error.message || 'Error al registrar usuario'
+            };
+            throw new HttpException(errorResponse, HttpStatus.BAD_REQUEST);
         }
     }
 
     @Post('refresh-token')
-    async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
+    async refreshToken(@Body() refreshTokenDto: RefreshTokenDto): Promise<AuthResponse> {
         try {
             return await this.auth0Service.refreshAccessToken(refreshTokenDto.refreshToken);
         } catch (error) {
-            throw new HttpException(
-                'Error al renovar el token',
-                HttpStatus.UNAUTHORIZED
-            );
+            const errorResponse: ErrorResponse = {
+                status: HttpStatus.UNAUTHORIZED,
+                message: 'Error al renovar el token'
+            };
+            throw new HttpException(errorResponse, HttpStatus.UNAUTHORIZED);
         }
     }
 
@@ -74,12 +91,15 @@ export class Auth0Controller {
     async getRoles() {
         try {
             const roles = await this.auth0Service.getAvailableRoles();
-            return roles.map(role => ({ id: role.id, name: role.name }));
+            return {
+                roles: roles.map(role => ({ id: role.id, name: role.name }))
+            };
         } catch (error) {
-            throw new HttpException(
-                'Error al obtener roles',
-                HttpStatus.INTERNAL_SERVER_ERROR
-            );
+            const errorResponse: ErrorResponse = {
+                status: HttpStatus.INTERNAL_SERVER_ERROR,
+                message: 'Error al obtener roles'
+            };
+            throw new HttpException(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -87,12 +107,16 @@ export class Auth0Controller {
     @UseGuards(AuthGuard('jwt'))
     async getUserRoles(@Req() req: RequestWithUser) {
         try {
-            return await this.auth0Service.getUserRoles(req.user.sub);
+            const roles = await this.auth0Service.getUserRoles(req.user.sub);
+            return {
+                roles: roles.map(role => typeof role === 'string' ? role : role.name)
+            };
         } catch (error) {
-            throw new HttpException(
-                'Error al obtener roles del usuario',
-                HttpStatus.INTERNAL_SERVER_ERROR
-            );
+            const errorResponse: ErrorResponse = {
+                status: HttpStatus.INTERNAL_SERVER_ERROR,
+                message: 'Error al obtener roles del usuario'
+            };
+            throw new HttpException(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -105,76 +129,16 @@ export class Auth0Controller {
 
     @Get('user-profile')
     @UseGuards(AuthGuard('jwt'))
-    async getUserProfile(@Req() req: RequestWithUser) {
+    async getUserProfile(@Req() req: RequestWithUser): Promise<AuthResponse> {
         try {
-            const auth0Id = req.user.sub;
-
-            // Obtener usuario desde el servicio de usuarios
-            const usuario = await this.usuariosService.buscarPorAuth0Id(auth0Id);
-
-            if (!usuario) {
-                throw new NotFoundException('Usuario no encontrado');
-            }
-
-            // Obtener roles del usuario
-            let roles = [];
-            try {
-                // Intentar obtener roles desde Auth0 (si es posible)
-                roles = await this.auth0Service.getUserRoles(auth0Id);
-            } catch (error) {
-                // Fallback: Extraer roles de la información local
-                roles = await this.usuariosService.obtenerRolesUsuario(usuario.id);
-                roles = roles.map(rolNombre => ({ name: rolNombre }));
-            }
-
-            // Obtener información adicional del usuario desde Auth0
-            let userInfo = {
-                sub: auth0Id,
-                name: req.user.name || '',
-                email: req.user.email || '',
-                picture: req.user.picture || null
-            };
-
-            // Si falta información, intentar obtenerla desde el servicio de Auth0
-            if (!userInfo.name || !userInfo.email || !userInfo.picture) {
-                try {
-                    // Obtener token de gestión para acceder a la API de Auth0
-                    const token = req.headers.authorization.split(' ')[1];
-
-                    // Obtener perfil completo de Auth0
-                    const auth0Profile = await this.auth0UsersService.getUserInfo(token);
-
-                    // Actualizar información faltante
-                    userInfo = {
-                        ...userInfo,
-                        name: auth0Profile.name || userInfo.name,
-                        email: auth0Profile.email || userInfo.email,
-                        picture: auth0Profile.picture || userInfo.picture
-                    };
-                } catch (error) {
-                    console.error('Error al obtener perfil desde Auth0:', error);
-                    // Continuamos con la información que tenemos
-                }
-            }
-
-            // Respuesta con la información del usuario
-            return {
-                user: {
-                    sub: auth0Id,
-                    name: userInfo.name,
-                    email: userInfo.email,
-                    picture: userInfo.picture,
-                    roles: roles.map(r => typeof r === 'string' ? r : r.name),
-                    userId: usuario.id
-                }
-            };
+            const token = req.headers.authorization.split(' ')[1];
+            return await this.auth0Service.getUserProfile(token);
         } catch (error) {
-            throw new HttpException(
-                error.message || 'Error al obtener perfil de usuario',
-                HttpStatus.INTERNAL_SERVER_ERROR
-            );
+            const errorResponse: ErrorResponse = {
+                status: HttpStatus.INTERNAL_SERVER_ERROR,
+                message: error.message || 'Error al obtener perfil de usuario'
+            };
+            throw new HttpException(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-
-
 }

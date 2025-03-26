@@ -123,7 +123,11 @@ export class Auth0UsersService {
                             include: {
                                 rol: true
                             }
-                        }
+                        },
+                        padres: true,
+                        estudiante: true,
+                        profesor: true,
+                        tesorero: true
                     }
                 });
 
@@ -136,7 +140,11 @@ export class Auth0UsersService {
                                 include: {
                                     rol: true
                                 }
-                            }
+                            },
+                            padres: true,
+                            estudiante: true,
+                            profesor: true,
+                            tesorero: true
                         }
                     });
                 }
@@ -187,7 +195,11 @@ export class Auth0UsersService {
                             include: {
                                 rol: true
                             }
-                        }
+                        },
+                        padres: true,
+                        estudiante: true,
+                        profesor: true,
+                        tesorero: true
                     }
                 });
             });
@@ -283,7 +295,6 @@ export class Auth0UsersService {
             throw errorObj;
         }
     }
-
 
     /**
      * Normaliza el nombre de un rol para procesar de manera uniforme

@@ -7,45 +7,13 @@ import { firstValueFrom } from 'rxjs';
 import { Auth0RolesService } from './auth0-roles.service';
 import { Auth0UsersService } from './auth0-users.service';
 import { UsuariosService } from '../users/users.service';
-
-// Interfaces para estandarizar la respuesta
-export interface AuthTokens {
-  access_token: string;
-  id_token: string;
-  refresh_token: string;
-  expires_in: number;
-}
-
-export interface UserInfo {
-  sub: string;
-  name: string;
-  email: string;
-  picture: string;
-  roles: string[];
-  userId: string;
-}
-
-export interface AuthResponse {
-  tokens: AuthTokens;
-  user: UserInfo;
-}
-
-export interface UserProfile {
-  auth0: {
-    sub: string;
-    name: string;
-    email: string;
-    picture?: string;
-  };
-  local: {
-    id: string;
-    roles: string[];
-    perfil?: {
-      tipo: string;
-      datos: any;
-    };
-  };
-}
+import {
+  AuthResponse,
+  AuthTokens,
+  RegisterResponse,
+  UserBasicInfo,
+  UserProfile
+} from './types/auth-response.types';
 
 @Injectable()
 export class Auth0Service {
@@ -119,7 +87,30 @@ export class Auth0Service {
       // 3. Sincronizar usuario y roles con la base de datos local
       const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
 
-      return this._formatAuthResponse(tokenData, userInfo, roles, localUser.id);
+      // 4. Determinar tipo de perfil
+      const userProfile = await this.determineUserProfile(localUser);
+
+      // 5. Formatear respuesta estandarizada
+      return {
+        auth: {
+          tokens: {
+            access_token: tokenData.access_token,
+            id_token: tokenData.id_token,
+            refresh_token: tokenData.refresh_token,
+            expires_in: tokenData.expires_in || 86400,
+            token_type: tokenData.token_type || 'Bearer'
+          }
+        },
+        user: {
+          id: localUser.id,
+          auth0Id: userInfo.sub,
+          name: userInfo.name,
+          email: userInfo.email,
+          picture: userInfo.picture,
+          roles: roles.map(role => typeof role === 'string' ? role : role.name),
+          profile: userProfile
+        }
+      };
     } catch (error) {
       this.logger.error(`Error en loginWithEmail: ${error.message}`);
       throw new Error(error.response?.data?.error_description || 'Error al iniciar sesión');
@@ -136,7 +127,7 @@ export class Auth0Service {
     role: string,
     fullName: string,
     perfilData?: any
-  ): Promise<AuthResponse> {
+  ): Promise<RegisterResponse> {
     try {
       // 1. Validar rol
       const availableRoles = await this.auth0RolesService.getAvailableRoles();
@@ -166,7 +157,14 @@ export class Auth0Service {
       );
 
       // 5. Iniciar sesión automáticamente para obtener tokens
-      return await this.loginWithEmail(email, password);
+      const authResponse = await this.loginWithEmail(email, password);
+
+      return {
+        success: true,
+        message: 'Usuario registrado correctamente',
+        auth: authResponse.auth,
+        user: authResponse.user
+      };
     } catch (error) {
       this.logger.error(`Error al registrar usuario: ${error.message}`);
 
@@ -207,7 +205,29 @@ export class Auth0Service {
       const roles = await this.auth0RolesService.getUserRoles(userInfo.sub);
       const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
 
-      return this._formatAuthResponse(tokenData, userInfo, roles, localUser.id);
+      // Determinar tipo de perfil
+      const userProfile = await this.determineUserProfile(localUser);
+
+      return {
+        auth: {
+          tokens: {
+            access_token: tokenData.access_token,
+            id_token: tokenData.id_token,
+            refresh_token: tokenData.refresh_token,
+            expires_in: tokenData.expires_in || 86400,
+            token_type: tokenData.token_type || 'Bearer'
+          }
+        },
+        user: {
+          id: localUser.id,
+          auth0Id: userInfo.sub,
+          name: userInfo.name,
+          email: userInfo.email,
+          picture: userInfo.picture,
+          roles: roles.map(role => typeof role === 'string' ? role : role.name),
+          profile: userProfile
+        }
+      };
     } catch (error) {
       this.logger.error(`Error al renovar token: ${error.message}`);
       throw new Error('Error al renovar el token');
@@ -231,7 +251,7 @@ export class Auth0Service {
   /**
    * Obtiene el perfil completo del usuario (Auth0 + local)
    */
-  async getUserProfile(token: string): Promise<UserProfile> {
+  async getUserProfile(token: string): Promise<AuthResponse> {
     try {
       // 1. Obtener información del usuario desde Auth0
       const auth0Profile = await this.auth0UsersService.getUserInfo(token);
@@ -246,50 +266,62 @@ export class Auth0Service {
       // 3. Obtener roles del usuario
       const roles = await this.usuariosService.obtenerRolesUsuario(localUser.id);
 
-      // 4. Construir objeto de perfil
-      const perfil: UserProfile = {
-        auth0: {
-          sub: auth0Profile.sub,
+      // 4. Determinar tipo de perfil
+      const userProfile = await this.determineUserProfile(localUser);
+
+      // 5. Construir respuesta estandarizada
+      return {
+        user: {
+          id: localUser.id,
+          auth0Id: auth0Profile.sub,
           name: auth0Profile.name,
           email: auth0Profile.email,
-          picture: auth0Profile.picture
-        },
-        local: {
-          id: localUser.id,
-          roles: roles
+          picture: auth0Profile.picture,
+          roles: roles,
+          profile: userProfile
         }
       };
-
-      // 5. Añadir información de perfil específica si existe
-      if (localUser.padres) {
-        perfil.local.perfil = {
-          tipo: 'padre',
-          datos: localUser.padres
-        };
-      } else if (localUser.estudiante) {
-        perfil.local.perfil = {
-          tipo: 'estudiante',
-          datos: localUser.estudiante
-        };
-      } else if (localUser.profesor) {
-        perfil.local.perfil = {
-          tipo: 'profesor',
-          datos: localUser.profesor
-        };
-      } else if (localUser.tesorero) {
-        perfil.local.perfil = {
-          tipo: 'tesorero',
-          datos: localUser.tesorero
-        };
-      }
-
-      return perfil;
     } catch (error) {
       this.logger.error(`Error al obtener perfil de usuario: ${error.message}`);
       throw error;
     }
   }
 
+  /**
+   * Determina el tipo de perfil del usuario basado en sus datos locales
+   * @private
+   */
+  private async determineUserProfile(localUser: any): Promise<UserProfile> {
+    if (localUser.padres) {
+      return {
+        type: 'padre',
+        data: localUser.padres
+      };
+    } else if (localUser.estudiante) {
+      return {
+        type: 'estudiante',
+        data: localUser.estudiante
+      };
+    } else if (localUser.profesor) {
+      return {
+        type: 'profesor',
+        data: localUser.profesor
+      };
+    } else if (localUser.tesorero) {
+      return {
+        type: 'tesorero',
+        data: localUser.tesorero
+      };
+    } else {
+      // Verificar si tiene rol de admin
+      const roles = await this.usuariosService.obtenerRolesUsuario(localUser.id);
+      if (roles.some(r => r.toLowerCase() === 'admin')) {
+        return { type: 'admin' };
+      }
+
+      return { type: 'none' };
+    }
+  }
 
   /**
    * Obtiene el ID de usuario local a partir del ID de Auth0
@@ -302,33 +334,5 @@ export class Auth0Service {
     }
 
     return usuario.id;
-  }
-
-  /**
-   * Formatea la respuesta de autenticación para mantener consistencia
-   * @private
-   */
-  private _formatAuthResponse(
-    tokenData: any,
-    userInfo: any,
-    roles: any[],
-    localUserId: string
-  ): AuthResponse {
-    return {
-      tokens: {
-        access_token: tokenData.access_token,
-        id_token: tokenData.id_token,
-        refresh_token: tokenData.refresh_token,
-        expires_in: tokenData.expires_in || 86400
-      },
-      user: {
-        sub: userInfo.sub,
-        name: userInfo.name,
-        email: userInfo.email,
-        picture: userInfo.picture,
-        roles: roles.map(role => typeof role === 'string' ? role : role.name),
-        userId: localUserId,
-      },
-    };
   }
 }
