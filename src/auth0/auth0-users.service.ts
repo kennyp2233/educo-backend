@@ -153,8 +153,10 @@ export class Auth0UsersService {
                 if (roles && roles.length > 0) {
                     const currentRoles = usuario.roles.map(r => ({
                         rolId: r.rolId,
-                        rolNombre: r.rol.nombre.toLowerCase()
+                        rolNombre: r.rol.nombre.toLowerCase(),
+                        estadoAprobacion: r.estadoAprobacion
                     }));
+
 
                     for (const role of roles) {
                         // Obtener ID del rol local correspondiente

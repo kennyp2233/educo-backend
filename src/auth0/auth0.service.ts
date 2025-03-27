@@ -9,9 +9,7 @@ import { Auth0UsersService } from './auth0-users.service';
 import { UsuariosService } from '../users/users.service';
 import {
   AuthResponse,
-  AuthTokens,
   RegisterResponse,
-  UserBasicInfo,
   UserProfile
 } from './types/auth-response.types';
 
@@ -87,6 +85,8 @@ export class Auth0Service {
       // 3. Sincronizar usuario y roles con la base de datos local
       const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
 
+      const rolesWithApproval = await this.auth0RolesService.getUserRolesWithApproval(localUser.id);
+
       // 4. Determinar tipo de perfil
       const userProfile = await this.determineUserProfile(localUser);
 
@@ -108,6 +108,7 @@ export class Auth0Service {
           email: userInfo.email,
           picture: userInfo.picture,
           roles: roles.map(role => typeof role === 'string' ? role : role.name),
+          rolesApproved: rolesWithApproval,  // Nueva propiedad con roles y estado
           profile: userProfile
         }
       };
@@ -204,6 +205,7 @@ export class Auth0Service {
       const userInfo = await this.auth0UsersService.getUserInfo(tokenData.access_token);
       const roles = await this.auth0RolesService.getUserRoles(userInfo.sub);
       const localUser = await this.auth0UsersService.syncUserWithDatabase(userInfo.sub, roles);
+      const rolesWithApproval = await this.auth0RolesService.getUserRolesWithApproval(localUser.id);
 
       // Determinar tipo de perfil
       const userProfile = await this.determineUserProfile(localUser);
@@ -225,6 +227,7 @@ export class Auth0Service {
           email: userInfo.email,
           picture: userInfo.picture,
           roles: roles.map(role => typeof role === 'string' ? role : role.name),
+          rolesApproved: rolesWithApproval,  // Nueva propiedad con roles y estado
           profile: userProfile
         }
       };
@@ -248,9 +251,6 @@ export class Auth0Service {
     return this.auth0RolesService.getUserRoles(userId);
   }
 
-  /**
-   * Obtiene el perfil completo del usuario (Auth0 + local)
-   */
   async getUserProfile(token: string): Promise<AuthResponse> {
     try {
       // 1. Obtener información del usuario desde Auth0
@@ -263,8 +263,8 @@ export class Auth0Service {
         throw new NotFoundException('Usuario no encontrado en sistema local');
       }
 
-      // 3. Obtener roles del usuario
-      const roles = await this.usuariosService.obtenerRolesUsuario(localUser.id);
+      // 3. Obtener roles del usuario con estado de aprobación
+      const rolesWithApproval = await this.auth0RolesService.getUserRolesWithApproval(localUser.id);
 
       // 4. Determinar tipo de perfil
       const userProfile = await this.determineUserProfile(localUser);
@@ -277,7 +277,8 @@ export class Auth0Service {
           name: auth0Profile.name,
           email: auth0Profile.email,
           picture: auth0Profile.picture,
-          roles: roles,
+          roles: rolesWithApproval.map(r => r.role),
+          rolesApproved: rolesWithApproval,  // Nueva propiedad con roles y estado
           profile: userProfile
         }
       };
@@ -335,4 +336,6 @@ export class Auth0Service {
 
     return usuario.id;
   }
+
+
 }

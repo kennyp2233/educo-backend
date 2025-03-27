@@ -34,7 +34,7 @@ export class UsuariosService {
                 usuarioId,
                 rol: {
                     nombre: {
-                        equals: rolNombre,
+                        contains: rolNombre,
                         mode: 'insensitive'
                     }
                 },
@@ -412,5 +412,21 @@ export class UsuariosService {
         return usuarioRoles.map(ur => ur.rol.nombre);
     }
 
+    /**
+     * Obtiene todos los roles aprobados de un usuario
+     */
+    async obtenerRolesAprobados(usuarioId: string): Promise<string[]> {
+        const usuarioRoles = await this.prisma.usuarioRol.findMany({
+            where: {
+                usuarioId,
+                estadoAprobacion: 'APROBADO'
+            },
+            include: {
+                rol: true
+            }
+        });
+
+        return usuarioRoles.map(ur => ur.rol.nombre);
+    }
 
 }

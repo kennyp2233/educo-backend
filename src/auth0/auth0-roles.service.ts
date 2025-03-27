@@ -212,4 +212,22 @@ export class Auth0RolesService {
             throw new Error(`Error al mapear rol ${auth0RoleName} a ID local`);
         }
     }
+
+    /**
+ * Obtiene los roles del usuario con su estado de aprobación
+ * @private
+ */
+    async getUserRolesWithApproval(userId: string): Promise<{ role: string, approved: boolean }[]> {
+        const usuarioRoles = await this.prisma.usuarioRol.findMany({
+            where: { usuarioId: userId },
+            include: {
+                rol: true
+            }
+        });
+
+        return usuarioRoles.map(ur => ({
+            role: ur.rol.nombre,
+            approved: ur.estadoAprobacion === 'APROBADO'
+        }));
+    }
 } 

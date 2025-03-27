@@ -40,7 +40,10 @@ export class AprobacionesService {
     async solicitarAprobacionRol(usuarioId: string, rolId: number) {
         // Verificar que el usuario existe
         const usuario = await this.prisma.usuario.findUnique({
-            where: { id: usuarioId }
+            where: { id: usuarioId },
+            include: {
+                tesorero: true // Incluir información de tesorero
+            }
         });
 
         if (!usuario) {
@@ -63,6 +66,10 @@ export class AprobacionesService {
                     usuarioId,
                     rolId
                 }
+            },
+            include: {
+                rol: true,
+                usuario: true
             }
         });
 
@@ -106,11 +113,21 @@ export class AprobacionesService {
                 }
             });
 
-            // Notificar a los administradores sobre la nueva solicitud
-            await this.notificarAdmins(
-                `Nueva solicitud de rol: ${rol.nombre}`,
-                `El usuario ${usuarioId} ha solicitado el rol ${rol.nombre}`
-            );
+            // Notificar según el tipo de rol
+            if (rol.nombre.toLowerCase() === 'tesorero' && usuario.tesorero) {
+                // Notificar a los tutores del curso sobre la solicitud de tesorero
+                await this.notificarTutoresCurso(
+                    usuario.tesorero.cursoId,
+                    `Nueva solicitud de tesorero`,
+                    `El usuario ${usuarioId} ha solicitado ser tesorero del curso ${usuario.tesorero.cursoId}`
+                );
+            } else {
+                // Notificar a los administradores sobre otros tipos de solicitudes
+                await this.notificarAdmins(
+                    `Nueva solicitud de rol: ${rol.nombre}`,
+                    `El usuario ${usuarioId} ha solicitado el rol ${rol.nombre}`
+                );
+            }
 
             return nuevoUsuarioRol;
         }
@@ -621,6 +638,21 @@ export class AprobacionesService {
 
                     return padreEstudiante.some(pe =>
                         cursosTutor.includes(pe.estudiante.cursoId)
+                    );
+                }
+                break;
+
+            case 'tesorero':
+                // Verificar si el usuario a aprobar tiene un perfil de tesorero
+                const tesorero = await this.prisma.tesorero.findUnique({
+                    where: { usuarioId },
+                    include: { curso: true }
+                });
+
+                // Solo tutores del curso pueden aprobar tesoreros
+                if (tesorero && aprobador.profesor) {
+                    return aprobador.profesor.cursos.some(c =>
+                        c.cursoId === tesorero.cursoId && c.esTutor
                     );
                 }
                 break;

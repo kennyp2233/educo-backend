@@ -69,11 +69,33 @@ export class RecaudacionService {
     async createRecaudacion(data: CreateRecaudacionDto): Promise<Recaudacion> {
         // Verificar que el tesorero existe
         const tesorero = await this.prisma.tesorero.findUnique({
-            where: { usuarioId: data.tesoreroId }
+            where: { usuarioId: data.tesoreroId },
+            include: {
+                usuario: {
+                    include: {
+                        roles: {
+                            include: {
+                                rol: true
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         if (!tesorero) {
             throw new NotFoundException(`Tesorero con ID ${data.tesoreroId} no encontrado`);
+        }
+
+        // Verificar que el tesorero tiene rol aprobado
+        const rolAprobado = tesorero.usuario.roles.some(r =>
+            r.rol.nombre.toLowerCase() === 'tesorero' &&
+            r.estadoAprobacion === 'APROBADO'
+        );
+
+
+        if (!rolAprobado) {
+            throw new BadRequestException('El tesorero no está aprobado para realizar esta acción');
         }
 
         // Verificar que las fechas son válidas

@@ -17,6 +17,7 @@ export interface UserBasicInfo {
     email: string;
     picture?: string;
     roles: string[];     // Nombres de roles (strings)
+    rolesApproved?: { role: string, approved: boolean }[]; // Roles con estado de aprobación
 }
 
 // Datos específicos de perfil

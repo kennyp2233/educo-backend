@@ -9,7 +9,6 @@ import {
     Get,
     UseGuards,
     Req,
-    NotFoundException
 } from '@nestjs/common';
 import { Auth0Service } from './auth0.service';
 import { LoginDto } from './dto/login.dto';
@@ -19,8 +18,6 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
-import { UsuariosService } from '../users/users.service';
-import { Auth0UsersService } from './auth0-users.service';
 import {
     AuthResponse,
     ErrorResponse,
@@ -38,8 +35,6 @@ interface RequestWithUser extends Request {
 export class Auth0Controller {
     constructor(
         private readonly auth0Service: Auth0Service,
-        private readonly usuariosService: UsuariosService,
-        private readonly auth0UsersService: Auth0UsersService
     ) { }
 
     @Post('login')
@@ -107,9 +102,12 @@ export class Auth0Controller {
     @UseGuards(AuthGuard('jwt'))
     async getUserRoles(@Req() req: RequestWithUser) {
         try {
-            const roles = await this.auth0Service.getUserRoles(req.user.sub);
+            const token = req.headers.authorization.split(' ')[1];
+            const profile = await this.auth0Service.getUserProfile(token);
+
             return {
-                roles: roles.map(role => typeof role === 'string' ? role : role.name)
+                roles: profile.user.roles,
+                rolesApproved: profile.user.rolesApproved
             };
         } catch (error) {
             const errorResponse: ErrorResponse = {
@@ -119,6 +117,7 @@ export class Auth0Controller {
             throw new HttpException(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
 
     @Get('user-role-test')
     @UseGuards(AuthGuard('jwt'), RolesGuard)

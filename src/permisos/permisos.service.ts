@@ -215,11 +215,31 @@ export class PermisosService {
     async create(createPermisoDto: CreatePermisoDto) {
         // Validar que el padre existe
         const padre = await this.prisma.padre.findUnique({
-            where: { usuarioId: createPermisoDto.padreId }
+            where: { usuarioId: createPermisoDto.padreId },
+            include: {
+                usuario: {
+                    include: {
+                        roles: {
+                            include: {
+                                rol: true
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         if (!padre) {
             throw new NotFoundException(`Padre con ID ${createPermisoDto.padreId} no encontrado`);
+        }
+
+        const rolAprobado = padre.usuario.roles.some(r =>
+            ['padre', 'padre_familia'].includes(r.rol.nombre.toLowerCase()) &&
+            r.estadoAprobacion === 'APROBADO'
+        );
+
+        if (!rolAprobado) {
+            throw new BadRequestException('El padre no está aprobado para realizar esta acción');
         }
 
         // Validar que el curso existe
