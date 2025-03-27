@@ -1,4 +1,4 @@
-// src/app.module.ts
+// src/app.module.ts (actualizado)
 
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -13,6 +13,8 @@ import { CarnetModule } from './carnet/carnet.module';
 import { NotificacionModule } from './notificacion/notificacion.module';
 import { AprobacionesModule } from './aprobaciones/aprobaciones.module';
 import { PermisosModule } from './permisos/permisos.module';
+import { PadresModule } from './padres/padres.module'; // Importar el nuevo módulo
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,6 +30,7 @@ import { PermisosModule } from './permisos/permisos.module';
     NotificacionModule,
     AprobacionesModule,
     PermisosModule,
+    PadresModule, // Agregar el módulo de padres
   ],
   providers: [JwtStrategy],
 })
