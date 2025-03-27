@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PadresService } from './padres.service';
+import { Roles } from 'src/auth0/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth0/guards/roles.guard';
 
 @Controller('padres')
 @UseGuards(AuthGuard('jwt'))
@@ -110,6 +112,35 @@ export class PadresController {
                 throw error;
             }
             throw new BadRequestException(`Error al verificar vinculación: ${error.message}`);
+        }
+    }
+
+    @Get('vinculaciones/pendientes')
+    @UseGuards(AuthGuard('jwt'), RolesGuard) // Solo admins y profesores pueden ver todas las vinculaciones
+    @Roles('admin', 'profesor') // Solo admins y profesores pueden ver todas las vinculaciones
+    async obtenerVinculacionesPendientes() {
+        try {
+            return await this.padresService.obtenerVinculacionesPendientes();
+        } catch (error) {
+            this.logger.error(`Error al obtener vinculaciones pendientes: ${error.message}`);
+            throw new BadRequestException(`Error al obtener vinculaciones pendientes: ${error.message}`);
+        }
+    }
+
+    /**
+   * Obtiene las vinculaciones pendientes para un padre específico
+   */
+    @Get(':padreId/vinculaciones/pendientes')
+    @UseGuards(AuthGuard('jwt'))
+    async obtenerVinculacionesPendientesPorPadre(@Param('padreId') padreId: string) {
+        try {
+            return await this.padresService.obtenerVinculacionesPendientes(padreId);
+        } catch (error) {
+            this.logger.error(`Error al obtener vinculaciones pendientes para padre ${padreId}: ${error.message}`);
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException(`Error al obtener vinculaciones pendientes: ${error.message}`);
         }
     }
 }

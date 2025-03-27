@@ -157,10 +157,10 @@ export class Auth0UsersService {
                         estadoAprobacion: r.estadoAprobacion
                     }));
 
-
                     for (const role of roles) {
+                        const roleName = typeof role === 'string' ? role : role.name;
                         // Obtener ID del rol local correspondiente
-                        const rolId = await this.auth0RolesService.mapAuth0RoleToLocalId(role.name);
+                        const rolId = await this.auth0RolesService.mapAuth0RoleToLocalId(roleName);
                         const rolExistente = currentRoles.find(r => r.rolId === rolId);
 
                         // Si no tiene este rol asignado, asignarlo con estado PENDIENTE
@@ -172,7 +172,7 @@ export class Auth0UsersService {
                                 this.logger.warn(`Rol con ID ${rolId} no existe en la BD local. Creando...`);
                                 await prisma.rol.create({
                                     data: {
-                                        nombre: role.name
+                                        nombre: roleName
                                     }
                                 });
                             }
@@ -185,6 +185,9 @@ export class Auth0UsersService {
                                     estadoAprobacion: 'PENDIENTE'
                                 }
                             });
+
+                            // Crear perfil básico si es necesario
+                            await this.auth0RolesService.crearPerfilSiNoExiste(usuario.id, roleName);
                         }
                     }
                 }
@@ -234,17 +237,19 @@ export class Auth0UsersService {
                     }
                 });
 
-                // 4. Si hay datos de perfil, crear perfil según rol
+                // 4. Crear perfil según rol
+                const normalizedRole = this.normalizeRoleName(roleName);
+
+                // Si hay datos específicos de perfil, usarlos; de lo contrario, crear con datos por defecto
                 if (perfilData) {
-                    const normalizedRole = this.normalizeRoleName(roleName);
                     switch (normalizedRole) {
                         case 'padre_familia':
                         case 'padre':
                             await prisma.padre.create({
                                 data: {
                                     usuarioId: usuario.id,
-                                    direccion: perfilData.direccion,
-                                    telefono: perfilData.telefono
+                                    direccion: perfilData.direccion || 'Por completar',
+                                    telefono: perfilData.telefono || 'Por completar'
                                 }
                             });
                             break;
@@ -252,8 +257,8 @@ export class Auth0UsersService {
                             await prisma.estudiante.create({
                                 data: {
                                     usuarioId: usuario.id,
-                                    cursoId: perfilData.cursoId,
-                                    grado: perfilData.grado
+                                    cursoId: perfilData.cursoId || (await this.obtenerPrimerCursoId()),
+                                    grado: perfilData.grado || 'Por asignar'
                                 }
                             });
                             break;
@@ -261,7 +266,7 @@ export class Auth0UsersService {
                             await prisma.profesor.create({
                                 data: {
                                     usuarioId: usuario.id,
-                                    especialidad: perfilData.especialidad
+                                    especialidad: perfilData.especialidad || 'Por completar'
                                 }
                             });
                             break;
@@ -269,11 +274,17 @@ export class Auth0UsersService {
                             await prisma.tesorero.create({
                                 data: {
                                     usuarioId: usuario.id,
-                                    cursoId: perfilData.cursoId
+                                    cursoId: perfilData.cursoId || (await this.obtenerPrimerCursoId())
                                 }
                             });
                             break;
+                        default:
+                            // Para otros roles que no requieren perfil específico
+                            break;
                     }
+                } else {
+                    // Si no hay datos específicos, crear perfil con datos por defecto
+                    await this.auth0RolesService.crearPerfilSiNoExiste(usuario.id, roleName);
                 }
 
                 // Retornar usuario con roles
@@ -296,6 +307,18 @@ export class Auth0UsersService {
             errorObj['auth0UserId'] = auth0Id;
             throw errorObj;
         }
+    }
+
+    /**
+     * Obtiene el ID del primer curso disponible
+     * @private
+     */
+    private async obtenerPrimerCursoId(): Promise<number> {
+        const primerCurso = await this.prisma.curso.findFirst();
+        if (!primerCurso) {
+            throw new Error('No hay cursos disponibles en el sistema');
+        }
+        return primerCurso.id;
     }
 
     /**

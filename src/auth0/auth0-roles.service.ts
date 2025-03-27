@@ -1,3 +1,5 @@
+// src/auth0/auth0-roles.service.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
@@ -214,9 +216,8 @@ export class Auth0RolesService {
     }
 
     /**
- * Obtiene los roles del usuario con su estado de aprobación
- * @private
- */
+     * Obtiene los roles del usuario con su estado de aprobación
+     */
     async getUserRolesWithApproval(userId: string): Promise<{ role: string, approved: boolean }[]> {
         const usuarioRoles = await this.prisma.usuarioRol.findMany({
             where: { usuarioId: userId },
@@ -230,4 +231,111 @@ export class Auth0RolesService {
             approved: ur.estadoAprobacion === 'APROBADO'
         }));
     }
-} 
+
+    /**
+     * Verifica si un usuario tiene un determinado perfil creado
+     */
+    async verificarPerfilExistente(usuarioId: string, nombreRol: string): Promise<boolean> {
+        try {
+            const normalizedRole = nombreRol.toLowerCase();
+
+            // Verificar según el tipo de rol
+            if (['padre', 'padre_familia'].includes(normalizedRole)) {
+                const padre = await this.prisma.padre.findUnique({
+                    where: { usuarioId }
+                });
+                return !!padre;
+            } else if (normalizedRole === 'estudiante') {
+                const estudiante = await this.prisma.estudiante.findUnique({
+                    where: { usuarioId }
+                });
+                return !!estudiante;
+            } else if (normalizedRole === 'profesor') {
+                const profesor = await this.prisma.profesor.findUnique({
+                    where: { usuarioId }
+                });
+                return !!profesor;
+            } else if (normalizedRole === 'tesorero') {
+                const tesorero = await this.prisma.tesorero.findUnique({
+                    where: { usuarioId }
+                });
+                return !!tesorero;
+            }
+
+            // Para roles que no requieren perfil específico
+            return true;
+        } catch (error) {
+            this.logger.error(`Error al verificar perfil existente: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Crear perfil básico para un usuario basado en su rol si no existe
+     */
+    async crearPerfilSiNoExiste(usuarioId: string, nombreRol: string): Promise<void> {
+        try {
+            // Verificar si ya existe el perfil
+            const perfilExiste = await this.verificarPerfilExistente(usuarioId, nombreRol);
+            if (perfilExiste) {
+                return; // No hacer nada si ya existe
+            }
+
+            const normalizedRole = nombreRol.toLowerCase();
+
+            // Crear perfil según el tipo de rol con datos mínimos
+            if (['padre', 'padre_familia'].includes(normalizedRole)) {
+                await this.prisma.padre.create({
+                    data: {
+                        usuarioId,
+                        direccion: 'Por completar',
+                        telefono: 'Por completar'
+                    }
+                });
+                this.logger.log(`Perfil de padre creado para usuario ${usuarioId}`);
+            } else if (normalizedRole === 'estudiante') {
+                // Buscar curso por defecto o el primer curso disponible
+                const primerCurso = await this.prisma.curso.findFirst();
+                if (!primerCurso) {
+                    this.logger.warn(`No se pudo crear perfil de estudiante para ${usuarioId}: No hay cursos disponibles`);
+                    return;
+                }
+
+                await this.prisma.estudiante.create({
+                    data: {
+                        usuarioId,
+                        cursoId: primerCurso.id,
+                        grado: 'Por asignar'
+                    }
+                });
+                this.logger.log(`Perfil de estudiante creado para usuario ${usuarioId}`);
+            } else if (normalizedRole === 'profesor') {
+                await this.prisma.profesor.create({
+                    data: {
+                        usuarioId,
+                        especialidad: 'Por completar'
+                    }
+                });
+                this.logger.log(`Perfil de profesor creado para usuario ${usuarioId}`);
+            } else if (normalizedRole === 'tesorero') {
+                // Buscar curso por defecto o el primer curso disponible
+                const primerCurso = await this.prisma.curso.findFirst();
+                if (!primerCurso) {
+                    this.logger.warn(`No se pudo crear perfil de tesorero para ${usuarioId}: No hay cursos disponibles`);
+                    return;
+                }
+
+                await this.prisma.tesorero.create({
+                    data: {
+                        usuarioId,
+                        cursoId: primerCurso.id
+                    }
+                });
+                this.logger.log(`Perfil de tesorero creado para usuario ${usuarioId}`);
+            }
+        } catch (error) {
+            this.logger.error(`Error al crear perfil para usuario ${usuarioId} con rol ${nombreRol}: ${error.message}`);
+            // No lanzar error para evitar interrumpir el flujo principal
+        }
+    }
+}

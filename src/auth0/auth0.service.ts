@@ -118,10 +118,6 @@ export class Auth0Service {
     }
   }
 
-  /**
-   * Registra un nuevo usuario y asigna un rol
-   * @returns Respuesta estandarizada con tokens y datos del usuario
-   */
   async registerUser(
     email: string,
     password: string,
@@ -150,7 +146,7 @@ export class Auth0Service {
       // 3. Asignar rol en Auth0
       await this.auth0RolesService.assignRoleToUser(auth0User.user_id, targetRole.id);
 
-      // 4. Sincronizar con la BD local
+      // 4. Sincronizar con la BD local y crear perfil según rol
       const localUser = await this.auth0UsersService.createLocalUser(
         auth0User.user_id,
         role,

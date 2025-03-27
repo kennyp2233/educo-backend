@@ -361,4 +361,76 @@ export class PadresService {
             throw error;
         }
     }
+
+    /**
+  * Obtiene todas las vinculaciones pendientes entre padres e hijos
+  */
+    async obtenerVinculacionesPendientes(padreId?: string): Promise<any[]> {
+        try {
+            // Construir filtro
+            const where: any = {
+                estadoVinculacion: 'PENDIENTE'
+            };
+
+            // Si se proporciona un ID de padre específico, filtrar por ese padre
+            if (padreId) {
+                where.padreId = padreId;
+            }
+
+            // Obtener todas las vinculaciones pendientes
+            const vinculacionesPendientes = await this.prisma.padreEstudiante.findMany({
+                where,
+                include: {
+                    padre: {
+                        include: {
+                            usuario: true
+                        }
+                    },
+                    estudiante: {
+                        include: {
+                            usuario: true,
+                            curso: {
+                                include: {
+                                    institucion: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Formatear la respuesta para que sea más fácil de usar
+            return vinculacionesPendientes.map(v => ({
+                vinculacion: {
+                    padreId: v.padreId,
+                    estudianteId: v.estudianteId,
+                    esRepresentante: v.esRepresentante,
+                    estadoVinculacion: v.estadoVinculacion,
+                    fechaSolicitud: v.fechaAprobacion || null // Si es null, usaremos la fecha de creación de la vinculación
+                },
+                padre: {
+                    id: v.padre.usuarioId,
+                    direccion: v.padre.direccion,
+                    telefono: v.padre.telefono
+                },
+                estudiante: {
+                    id: v.estudiante.usuarioId,
+                    grado: v.estudiante.grado,
+                    curso: {
+                        id: v.estudiante.curso.id,
+                        nombre: v.estudiante.curso.nombre,
+                        paralelo: v.estudiante.curso.paralelo,
+                        anioLectivo: v.estudiante.curso.anioLectivo,
+                        institucion: {
+                            id: v.estudiante.curso.institucion.id,
+                            nombre: v.estudiante.curso.institucion.nombre
+                        }
+                    }
+                }
+            }));
+        } catch (error) {
+            this.logger.error(`Error al obtener vinculaciones pendientes: ${error.message}`);
+            throw error;
+        }
+    }
 }
