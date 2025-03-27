@@ -11,8 +11,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PadresService } from './padres.service';
-import { Roles } from 'src/auth0/decorators/roles.decorator';
-import { RolesGuard } from 'src/auth0/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
 
 @Controller('padres')
 @UseGuards(AuthGuard('jwt'))

@@ -8,9 +8,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// prisma/schema.prisma - modificaciones necesarias
 model Usuario {
   id             String         @id @default(uuid())
-  auth0Id        String         @unique
+  email          String         @unique // Agregar este campo
+  password       String         // Agregar este campo
+  nombre         String?        // Agregar este campo
   roles          UsuarioRol[]
   padres         Padre?
   estudiante     Estudiante?

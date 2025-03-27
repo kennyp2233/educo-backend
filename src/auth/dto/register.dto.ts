@@ -1,4 +1,5 @@
-// src/auth0/dto/register.dto.ts
+
+// src/auth/dto/register.dto.ts
 import { IsEmail, IsNotEmpty, MinLength, IsString, IsObject, IsOptional } from 'class-validator';
 
 export class RegisterDto {
@@ -22,3 +23,4 @@ export class RegisterDto {
   @IsObject()
   perfilData?: any;
 }
+
