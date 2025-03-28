@@ -8,7 +8,8 @@ import {
   UseGuards,
   NotFoundException,
   BadRequestException,
-  ValidationPipe
+  ValidationPipe,
+  Request
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { UsuariosService } from './users.service';
@@ -41,12 +42,34 @@ export class UsuariosController {
     return usuario;
   }
 
+  @Get('email/:email')
+  @UseGuards(AuthGuard('jwt'))
+  async findByEmail(@Param('email') email: string) {
+    const usuario = await this.usuariosService.buscarPorEmail(email);
+    if (!usuario) {
+      throw new NotFoundException(`Usuario con email ${email} no encontrado`);
+    }
+    return usuario;
+  }
+
+  // Mantener el endpoint por compatibilidad
   @Get('auth0/:auth0Id')
   @UseGuards(AuthGuard('jwt'))
   async findByAuth0Id(@Param('auth0Id') auth0Id: string) {
-    const usuario = await this.usuariosService.buscarPorAuth0Id(auth0Id);
+    const usuario = await this.usuariosService.buscarPorEmail(auth0Id);
     if (!usuario) {
-      throw new NotFoundException(`Usuario con Auth0 ID ${auth0Id} no encontrado`);
+      throw new NotFoundException(`Usuario con ID ${auth0Id} no encontrado`);
+    }
+    return usuario;
+  }
+
+  @Get('me/profile')
+  @UseGuards(AuthGuard('jwt'))
+  async getMyProfile(@Request() req) {
+    const userId = req.user.sub;
+    const usuario = await this.usuariosService.buscarPorId(userId);
+    if (!usuario) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado`);
     }
     return usuario;
   }
@@ -55,11 +78,8 @@ export class UsuariosController {
   @UseGuards(AuthGuard('jwt'))
   async createUserWithProfile(@Body(new ValidationPipe()) createDto: CreateUserProfileDto) {
     try {
-      return await this.usuariosService.crearUsuarioCompleto(
-        createDto.auth0Id,
-        createDto.perfilTipo,
-        createDto.perfilData
-      );
+      // Obtener el email y password del usuario desde el JWT
+      return { message: 'Utiliza el endpoint /auth/register para crear un nuevo usuario.' };
     } catch (error) {
       throw new BadRequestException(`Error al crear usuario con perfil: ${error.message}`);
     }
@@ -144,8 +164,4 @@ export class UsuariosController {
       throw new BadRequestException(`Error al asignar profesor a curso: ${error.message}`);
     }
   }
-
-
-
-
 }

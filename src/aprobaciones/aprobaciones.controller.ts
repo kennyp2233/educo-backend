@@ -45,13 +45,9 @@ export class AprobacionesController {
     @Get('pendientes')
     async obtenerSolicitudesPendientes(@Req() req: RequestWithUser) {
         try {
-            // Obtener ID del usuario actual desde Auth0
-            const usuario = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
-            if (!usuario) {
-                throw new NotFoundException('Usuario no encontrado en el sistema');
-            }
-
-            return await this.aprobacionesService.obtenerSolicitudesPendientes(usuario.id);
+            // El ID del usuario viene directamente del token JWT
+            const userId = req.user.sub;
+            return await this.aprobacionesService.obtenerSolicitudesPendientes(userId);
         } catch (error) {
             throw this.handleError(error, 'Error al obtener solicitudes pendientes');
         }
@@ -97,16 +93,12 @@ export class AprobacionesController {
         @Req() req: RequestWithUser
     ) {
         try {
-            // Obtener ID del usuario que está aprobando
-            const aprobador = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
-            if (!aprobador) {
-                throw new NotFoundException('Usuario aprobador no encontrado en el sistema');
-            }
-
+            // ID del aprobador viene directo del token
+            const aprobadorId = req.user.sub;
             return await this.aprobacionesService.resolverAprobacionRol(
                 usuarioId,
                 rolId,
-                aprobador.id,
+                aprobadorId,
                 resolverDto
             );
         } catch (error) {
@@ -143,16 +135,12 @@ export class AprobacionesController {
         @Req() req: RequestWithUser
     ) {
         try {
-            // Obtener ID del usuario que está aprobando
-            const aprobador = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
-            if (!aprobador) {
-                throw new NotFoundException('Usuario aprobador no encontrado en el sistema');
-            }
-
+            // ID del aprobador viene directo del token
+            const aprobadorId = req.user.sub;
             return await this.aprobacionesService.resolverVinculacion(
                 padreId,
                 estudianteId,
-                aprobador.id,
+                aprobadorId,
                 resolverDto
             );
         } catch (error) {
@@ -170,15 +158,11 @@ export class AprobacionesController {
         @Req() req: RequestWithUser
     ) {
         try {
-            // Obtener ID del usuario que está aprobando
-            const aprobador = await this.usuariosService.buscarPorAuth0Id(req.user.sub);
-            if (!aprobador) {
-                throw new NotFoundException('Usuario aprobador no encontrado en el sistema');
-            }
-
+            // ID del aprobador viene directo del token
+            const aprobadorId = req.user.sub;
             return await this.aprobacionesService.resolverPermiso(
                 permisoId,
-                aprobador.id,
+                aprobadorId,
                 resolverDto
             );
         } catch (error) {

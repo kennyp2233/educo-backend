@@ -84,7 +84,8 @@ export class PermisosController {
     @Get('pendientes')
     async findPendientesByTutor(@Req() req: RequestWithUser) {
         try {
-            const tutorId = await this.getUserIdFromAuth0(req.user.sub);
+            // Ya no necesitamos buscar por auth0Id, el sub del token es directamente el ID del usuario
+            const tutorId = req.user.sub;
             return this.permisosService.findPendientesByTutor(tutorId);
         } catch (error) {
             if (error instanceof NotFoundException) {
@@ -155,7 +156,8 @@ export class PermisosController {
         @Req() req: RequestWithUser
     ) {
         try {
-            const tutorId = await this.getUserIdFromAuth0(req.user.sub);
+            // El ID del usuario viene directamente del token JWT
+            const tutorId = req.user.sub;
             return await this.permisosService.aprobar(id, tutorId, comentarios);
         } catch (error) {
             if (error instanceof NotFoundException) {
@@ -175,7 +177,8 @@ export class PermisosController {
         @Req() req: RequestWithUser
     ) {
         try {
-            const tutorId = await this.getUserIdFromAuth0(req.user.sub);
+            // El ID del usuario viene directamente del token JWT
+            const tutorId = req.user.sub;
             return await this.permisosService.rechazar(id, tutorId, comentarios);
         } catch (error) {
             if (error instanceof NotFoundException) {
@@ -213,18 +216,5 @@ export class PermisosController {
             }
             throw new BadRequestException(error.message || 'Error al eliminar permiso');
         }
-    }
-
-    /**
-     * Método auxiliar para obtener el ID de usuario local a partir del ID de Auth0
-     */
-    private async getUserIdFromAuth0(auth0Id: string): Promise<string> {
-        const usuario = await this.usuariosService.buscarPorAuth0Id(auth0Id);
-
-        if (!usuario) {
-            throw new UnauthorizedException('Usuario no encontrado');
-        }
-
-        return usuario.id;
     }
 }

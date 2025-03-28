@@ -16,6 +16,7 @@ import { UserInstitutionService } from './user-institution.service';
 interface RequestWithUser extends Request {
     user: {
         sub: string;
+        email: string;
         [key: string]: any;
     }
 }
@@ -50,16 +51,10 @@ export class UserInstitutionController {
     async getMyInstitutions(@Req() req: RequestWithUser) {
         try {
             // Extraer el ID del usuario desde el objeto user (del token JWT)
-            const auth0Id = req.user.sub;
+            const userId = req.user.sub;
 
-            // Buscar el usuario local por su Auth0 ID
-            const usuario = await this.findLocalUserByAuth0Id(auth0Id);
-
-            if (!usuario) {
-                throw new NotFoundException('Usuario no encontrado en el sistema local');
-            }
-
-            return await this.userInstitutionService.getInstitutionByUser(usuario.id);
+            // Ya tenemos el ID directamente del token, no necesitamos buscar por email
+            return await this.userInstitutionService.getInstitutionByUser(userId);
         } catch (error) {
             this.logger.error(`Error al obtener instituciones del usuario actual: ${error.message}`);
             if (error instanceof NotFoundException) {
@@ -67,15 +62,5 @@ export class UserInstitutionController {
             }
             throw new BadRequestException(`Error al obtener instituciones: ${error.message}`);
         }
-    }
-
-    /**
-     * Método auxiliar para buscar un usuario local por su ID de Auth0
-     * @private
-     */
-    private async findLocalUserByAuth0Id(auth0Id: string) {
-        return await this.userInstitutionService['prisma'].usuario.findUnique({
-            where: { auth0Id }
-        });
     }
 }

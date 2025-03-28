@@ -15,13 +15,6 @@ export type PerfilUsuario = {
     datos: any;
 }
 
-export type Auth0UserData = {
-    auth0Id: string;
-    email: string;
-    nombre: string;
-    fotoPerfil?: string;
-}
-
 @Injectable()
 export class UsuariosService {
     private readonly logger = new Logger(UsuariosService.name);
@@ -46,15 +39,14 @@ export class UsuariosService {
     }
 
     /**
-     * Busca un usuario por su Auth0 ID
-     * @param auth0Id ID de Auth0
+     * Busca un usuario por su email (anteriormente por Auth0 ID)
+     * @param email Email del usuario
      * @param includeRelations Si es verdadero, incluye las relaciones (padre, estudiante, etc.)
      */
-    async buscarPorAuth0Id(auth0Id: string, includeRelations: boolean = false): Promise<any | null> {
-
+    async buscarPorEmail(email: string, includeRelations: boolean = false): Promise<any | null> {
         if (includeRelations) {
             return this.prisma.usuario.findUnique({
-                where: { auth0Id },
+                where: { email },
                 include: {
                     roles: {
                         include: {
@@ -69,10 +61,11 @@ export class UsuariosService {
             });
         } else {
             return this.prisma.usuario.findUnique({
-                where: { auth0Id }
+                where: { email }
             });
         }
     }
+
     /**
      * Busca un usuario por su ID interno
      */
@@ -96,9 +89,13 @@ export class UsuariosService {
     /**
      * Crear usuario básico
      */
-    async crearUsuario(auth0Id: string): Promise<Usuario> {
+    async crearUsuario(email: string, password: string, nombre?: string): Promise<Usuario> {
         return this.prisma.usuario.create({
-            data: { auth0Id },
+            data: {
+                email,
+                password,
+                nombre: nombre || email
+            },
         });
     }
 
@@ -145,10 +142,14 @@ export class UsuariosService {
     /**
      * Crear usuario y asignar rol en una transacción
      */
-    async crearUsuarioConRol(auth0Id: string, rolId: number): Promise<Usuario> {
+    async crearUsuarioConRol(email: string, password: string, nombre: string, rolId: number): Promise<Usuario> {
         return this.prisma.executeTransaction(async (prisma) => {
             const usuario = await prisma.usuario.create({
-                data: { auth0Id },
+                data: {
+                    email,
+                    password,
+                    nombre
+                },
             });
 
             await prisma.usuarioRol.create({
@@ -177,22 +178,21 @@ export class UsuariosService {
     }
 
     /**
-     * Sincronizar datos desde Auth0
+     * Actualizar datos del usuario
      */
-    async sincronizarDesdeAuth0(auth0Id: string, datos: Auth0UserData): Promise<Usuario> {
+    async actualizarUsuario(id: string, datos: any): Promise<Usuario> {
         // Buscar si el usuario ya existe
-        const usuarioExistente = await this.buscarPorAuth0Id(auth0Id);
+        const usuarioExistente = await this.buscarPorId(id);
 
-        if (usuarioExistente) {
-            // Si existe, actualizar solo los datos que provienen de Auth0
-            return this.prisma.usuario.update({
-                where: { auth0Id },
-                data: {},
-            });
-        } else {
-            // Si no existe, crearlo
-            return this.crearUsuario(auth0Id);
+        if (!usuarioExistente) {
+            throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
         }
+
+        // Si existe, actualizar los datos
+        return this.prisma.usuario.update({
+            where: { id },
+            data: datos,
+        });
     }
 
     /**
@@ -332,7 +332,9 @@ export class UsuariosService {
      * Crear usuario completo con perfil según su rol
      */
     async crearUsuarioCompleto(
-        auth0Id: string,
+        email: string,
+        password: string,
+        nombre: string,
         rolNombre: string,
         perfilData: any
     ): Promise<Usuario> {
@@ -345,7 +347,11 @@ export class UsuariosService {
 
             // 2. Crear usuario base
             const usuario = await prisma.usuario.create({
-                data: { auth0Id }
+                data: {
+                    email,
+                    password,
+                    nombre
+                }
             });
 
             // 3. Asignar rol
@@ -397,6 +403,7 @@ export class UsuariosService {
             return usuario;
         });
     }
+
     async obtenerRolesUsuario(usuarioId: string): Promise<string[]> {
         const usuarioRoles = await this.prisma.usuarioRol.findMany({
             where: { usuarioId },
@@ -429,4 +436,12 @@ export class UsuariosService {
         return usuarioRoles.map(ur => ur.rol.nombre);
     }
 
+    /**
+     * Busca un usuario por Auth0 ID (método compatible con código anterior)
+     * @deprecated Usa buscarPorEmail en su lugar
+     */
+    async buscarPorAuth0Id(auth0Id: string, includeRelations: boolean = false): Promise<any | null> {
+        // Asumimos que auth0Id se usó como email en la migración
+        return this.buscarPorEmail(auth0Id, includeRelations);
+    }
 }
