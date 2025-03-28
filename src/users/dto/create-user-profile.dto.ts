@@ -15,7 +15,7 @@ export enum PerfilTipo {
 export class CreateUserProfileDto {
   @IsNotEmpty()
   @IsString()
-  auth0Id: string;
+  userId: string; // Cambiado de auth0Id a userId para usar IDs internos
 
   @IsNotEmpty()
   @IsEnum(PerfilTipo)

@@ -39,7 +39,7 @@ export class UsuariosService {
     }
 
     /**
-     * Busca un usuario por su email (anteriormente por Auth0 ID)
+     * Busca un usuario por su email
      * @param email Email del usuario
      * @param includeRelations Si es verdadero, incluye las relaciones (padre, estudiante, etc.)
      */
@@ -437,11 +437,11 @@ export class UsuariosService {
     }
 
     /**
-     * Busca un usuario por Auth0 ID (método compatible con código anterior)
-     * @deprecated Usa buscarPorEmail en su lugar
+     * Para mantener la compatibilidad con el código existente
+     * Redirige al método buscarPorId
+     * @deprecated Use buscarPorId en su lugar
      */
-    async buscarPorAuth0Id(auth0Id: string, includeRelations: boolean = false): Promise<any | null> {
-        // Asumimos que auth0Id se usó como email en la migración
-        return this.buscarPorEmail(auth0Id, includeRelations);
+    async buscarPorAuth0Id(id: string, includeRelations: boolean = false): Promise<any | null> {
+        return this.buscarPorId(id);
     }
 }

@@ -52,13 +52,13 @@ export class UsuariosController {
     return usuario;
   }
 
-  // Mantener el endpoint por compatibilidad
-  @Get('auth0/:auth0Id')
+  // Se mantiene temporalmente para compatibilidad con sistemas que aún usan auth0Id
+  @Get('auth0/:id')
   @UseGuards(AuthGuard('jwt'))
-  async findByAuth0Id(@Param('auth0Id') auth0Id: string) {
-    const usuario = await this.usuariosService.buscarPorEmail(auth0Id);
+  async findByAuth0Id(@Param('id') id: string) {
+    const usuario = await this.usuariosService.buscarPorId(id);
     if (!usuario) {
-      throw new NotFoundException(`Usuario con ID ${auth0Id} no encontrado`);
+      throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
     }
     return usuario;
   }
