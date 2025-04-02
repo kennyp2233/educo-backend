@@ -144,6 +144,7 @@ export class AuthService {
                         usuarioId: usuario.id,
                         rolId: rol.id,
                         estadoAprobacion: 'PENDIENTE',
+                        cursoId: registerDto.perfilData?.cursoId
                     },
                 });
 

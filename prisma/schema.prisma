@@ -38,10 +38,12 @@ model UsuarioRol {
   aprobadorId      String?
   fechaAprobacion  DateTime?
   comentarios      String?
+  cursoId          Int?      // Campo opcional para asociar el rol a un curso específico
 
   usuario   Usuario  @relation(fields: [usuarioId], references: [id])
   rol       Rol      @relation(fields: [rolId], references: [id])
   aprobador Usuario? @relation("AprobadorUsuarioRol", fields: [aprobadorId], references: [id])
+  curso     Curso?   @relation(fields: [cursoId], references: [id]) // Nueva relación
 
   @@id([usuarioId, rolId])
 }
@@ -65,6 +67,7 @@ model Curso {
   profesorCurso ProfesorCurso[]
   tesoreros     Tesorero[]
   permisos      Permiso[]
+  usuarioRoles UsuarioRol[] 
 }
 
 model Padre {
