@@ -104,7 +104,7 @@ export class AuthController {
       const roles = userRoles.map(ur => ur.rol.nombre);
       const rolesWithApproval = userRoles.map(ur => ({
         role: ur.rol.nombre,
-        approved: ur.estadoAprobacion === 'APROBADO',
+        status: ur.estadoAprobacion
       }));
 
       return {

@@ -65,7 +65,7 @@ export class AuthService {
             const roles = user.roles.map(r => r.rol.nombre);
             const rolesWithApproval = user.roles.map(r => ({
                 role: r.rol.nombre,
-                approved: r.estadoAprobacion === 'APROBADO'
+                status: r.estadoAprobacion
             }));
 
             // Obtener perfil específico
@@ -269,7 +269,7 @@ export class AuthService {
             const roles = user.roles.map(r => r.rol.nombre);
             const rolesWithApproval = user.roles.map(r => ({
                 role: r.rol.nombre,
-                approved: r.estadoAprobacion === 'APROBADO'
+                status: r.estadoAprobacion
             }));
 
             // Obtener perfil específico
@@ -326,7 +326,7 @@ export class AuthService {
             const roles = user.roles.map(r => r.rol.nombre);
             const rolesWithApproval = user.roles.map(r => ({
                 role: r.rol.nombre,
-                approved: r.estadoAprobacion === 'APROBADO'
+                status: r.estadoAprobacion
             }));
 
             // Obtener perfil específico
