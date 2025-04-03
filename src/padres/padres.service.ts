@@ -53,6 +53,7 @@ export class PadresService {
                 estudiante: {
                     id: v.estudiante.usuarioId,
                     grado: v.estudiante.grado,
+                    nombre: v.estudiante.usuario.nombre,
                     curso: {
                         id: v.estudiante.curso.id,
                         nombre: v.estudiante.curso.nombre,
@@ -186,7 +187,7 @@ export class PadresService {
             // Obtener recaudaciones activas para este curso
             const recaudaciones = await this.prisma.recaudacion.findMany({
                 where: {
-                    estado: 'ACTIVA',
+                    estado: 'ABIERTA',
                     tesorero: {
                         cursoId: id
                     }
@@ -415,6 +416,7 @@ export class PadresService {
                 },
                 estudiante: {
                     id: v.estudiante.usuarioId,
+                    nombre: v.estudiante.usuario.nombre,
                     grado: v.estudiante.grado,
                     curso: {
                         id: v.estudiante.curso.id,

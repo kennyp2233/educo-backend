@@ -8,7 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// prisma/schema.prisma - modificaciones necesarias
 model Usuario {
   id             String         @id @default(uuid())
   email          String         @unique // Agregar este campo
@@ -32,13 +31,13 @@ model Rol {
 }
 
 model UsuarioRol {
-  usuarioId        String    @default(uuid()) @map("usuario_id")
+  usuarioId        String    @map("usuario_id")
   rolId            Int
-  estadoAprobacion String    @default("PENDIENTE") // "PENDIENTE", "APROBADO", "RECHAZADO"
+  estadoAprobacion EstadoAprobacion @default(PENDIENTE)
   aprobadorId      String?
   fechaAprobacion  DateTime?
   comentarios      String?
-  cursoId          Int?      // Campo opcional para asociar el rol a un curso específico
+  cursoId          Int? // Campo opcional para asociar el rol a un curso específico
 
   usuario   Usuario  @relation(fields: [usuarioId], references: [id])
   rol       Rol      @relation(fields: [rolId], references: [id])
@@ -67,7 +66,7 @@ model Curso {
   profesorCurso ProfesorCurso[]
   tesoreros     Tesorero[]
   permisos      Permiso[]
-  usuarioRoles UsuarioRol[] 
+  usuarioRoles  UsuarioRol[]
 }
 
 model Padre {
@@ -78,7 +77,7 @@ model Padre {
   hijos     PadreEstudiante[]
 
   Abono    Abono[]
-  permisos Permiso[] // Unificado
+  permisos Permiso[]
 }
 
 model Estudiante {
@@ -91,14 +90,14 @@ model Estudiante {
   carnet    Carnet?
 
   Abono             Abono[]
-  permisosRecibidos Permiso[] @relation("PermisoEstudiante") // Relación explícita
+  permisosRecibidos Permiso[] @relation("PermisoEstudiante")
 }
 
 model PadreEstudiante {
   padreId           String
   estudianteId      String
   esRepresentante   Boolean
-  estadoVinculacion String     @default("PENDIENTE")
+  estadoVinculacion EstadoVinculacion @default(PENDIENTE)
   aprobadorId       String?
   fechaAprobacion   DateTime?
   padre             Padre      @relation(fields: [padreId], references: [usuarioId])
@@ -141,7 +140,7 @@ model Recaudacion {
   montoTotal  Float
   fechaInicio DateTime
   fechaCierre DateTime
-  estado      String
+  estado      EstadoRecaudacion
   tesorero    Tesorero @relation(fields: [tesoreroId], references: [usuarioId])
   abonos      Abono[]
 }
@@ -154,7 +153,7 @@ model Abono {
   monto         Float
   fechaPago     DateTime
   comprobante   String?
-  estado        String
+  estado        EstadoAbono
   recaudacion   Recaudacion @relation(fields: [recaudacionId], references: [id])
   padre         Padre       @relation(fields: [padreId], references: [usuarioId])
   estudiante    Estudiante  @relation(fields: [estudianteId], references: [usuarioId])
@@ -169,24 +168,22 @@ model Carnet {
   estudiante      Estudiante @relation(fields: [estudianteId], references: [usuarioId])
 }
 
-// MODELO UNIFICADO DE PERMISOS
 model Permiso {
   id              Int       @id @default(autoincrement())
   padreId         String
   cursoId         Int
-  estudianteId    String? // Opcional para permitir permisos de acceso sin estudiante específico
+  estudianteId    String?
   titulo          String
-  descripcion     String // Antiguo "motivo"
-  tipoPermiso     String // "ACCESO_PADRE", "EVENTO_ESTUDIANTE", "EMERGENCIA", "RECURRENTE"
+  descripcion     String
+  tipoPermiso     TipoPermiso
   fechaInicio     DateTime
   fechaFin        DateTime
   codigoQR        String?   @unique
-  estado          String // "PENDIENTE", "APROBADO", "RECHAZADO", "UTILIZADO", "VENCIDO"
+  estado          EstadoPermiso
   aprobadorId     String?
   fechaCreacion   DateTime  @default(now())
   fechaAprobacion DateTime?
 
-  // Relaciones
   padre      Padre       @relation(fields: [padreId], references: [usuarioId])
   curso      Curso       @relation(fields: [cursoId], references: [id])
   estudiante Estudiante? @relation("PermisoEstudiante", fields: [estudianteId], references: [usuarioId])
@@ -202,4 +199,45 @@ model Notificacion {
   fecha             DateTime @default(now())
   leida             Boolean  @default(false)
   usuarioReceptor   Usuario  @relation(fields: [usuarioReceptorId], references: [id])
+}
+
+// Definición de enums
+
+enum EstadoAprobacion {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
+enum EstadoRecaudacion {
+  PENDIENTE
+  ABIERTA
+  CERRADA
+}
+
+enum EstadoAbono {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
+enum EstadoPermiso {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  UTILIZADO
+  VENCIDO
+}
+
+enum TipoPermiso {
+  ACCESO_PADRE
+  EVENTO_ESTUDIANTE
+  EMERGENCIA
+  RECURRENTE
+}
+
+enum EstadoVinculacion {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
 }

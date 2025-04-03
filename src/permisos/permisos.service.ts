@@ -3,8 +3,9 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificacionService } from '../notificacion/notificacion.service';
 import { CreatePermisoDto, TipoPermiso } from './dto/create-permiso.dto';
-import { UpdatePermisoDto, EstadoPermiso } from './dto/update-permiso.dto';
+import { UpdatePermisoDto } from './dto/update-permiso.dto';
 import { v4 as uuidv4 } from 'uuid';
+import { $Enums } from '@prisma/client';
 
 @Injectable()
 export class PermisosService {
@@ -36,7 +37,7 @@ export class PermisosService {
     /**
      * Obtiene los permisos por tipo (acceso o evento)
      */
-    async findByTipo(tipoPermiso: string) {
+    async findByTipo(tipoPermiso: TipoPermiso) {
         return this.prisma.permiso.findMany({
             where: { tipoPermiso },
             include: {
@@ -301,7 +302,7 @@ export class PermisosService {
                 tipoPermiso: createPermisoDto.tipoPermiso,
                 fechaInicio,
                 fechaFin,
-                estado: EstadoPermiso.PENDIENTE,
+                estado: $Enums.EstadoPermiso.PENDIENTE,
                 fechaCreacion: new Date()
             }
         });
@@ -330,7 +331,7 @@ export class PermisosService {
         }
 
         // Solo se pueden modificar permisos pendientes
-        if (permisoExistente.estado !== EstadoPermiso.PENDIENTE) {
+        if (permisoExistente.estado !== $Enums.EstadoPermiso.PENDIENTE) {
             throw new BadRequestException(`No se puede modificar un permiso en estado ${permisoExistente.estado}`);
         }
 
@@ -384,7 +385,7 @@ export class PermisosService {
         }
 
         // Verificar que el permiso está pendiente
-        if (permiso.estado !== EstadoPermiso.PENDIENTE) {
+        if (permiso.estado !== $Enums.EstadoPermiso.PENDIENTE) {
             throw new BadRequestException(`El permiso ya está en estado ${permiso.estado}`);
         }
 
@@ -409,7 +410,7 @@ export class PermisosService {
         const permisoAprobado = await this.prisma.permiso.update({
             where: { id },
             data: {
-                estado: EstadoPermiso.APROBADO,
+                estado: $Enums.EstadoPermiso.APROBADO,
                 aprobadorId: tutorId,
                 fechaAprobacion: new Date(),
                 codigoQR
@@ -441,7 +442,7 @@ export class PermisosService {
         }
 
         // Verificar que el permiso está pendiente
-        if (permiso.estado !== EstadoPermiso.PENDIENTE) {
+        if (permiso.estado !== $Enums.EstadoPermiso.PENDIENTE) {
             throw new BadRequestException(`El permiso ya está en estado ${permiso.estado}`);
         }
 
@@ -463,7 +464,7 @@ export class PermisosService {
         const permisoRechazado = await this.prisma.permiso.update({
             where: { id },
             data: {
-                estado: EstadoPermiso.RECHAZADO,
+                estado: $Enums.EstadoPermiso.RECHAZADO,
                 aprobadorId: tutorId,
                 fechaAprobacion: new Date()
             }
@@ -494,7 +495,7 @@ export class PermisosService {
         }
 
         // Verificar que el permiso está aprobado
-        if (permiso.estado !== EstadoPermiso.APROBADO) {
+        if (permiso.estado !== $Enums.EstadoPermiso.APROBADO) {
             throw new BadRequestException(`El permiso no está aprobado, estado actual: ${permiso.estado}`);
         }
 
@@ -505,7 +506,7 @@ export class PermisosService {
             await this.prisma.permiso.update({
                 where: { id: permiso.id },
                 data: {
-                    estado: EstadoPermiso.VENCIDO
+                    estado: $Enums.EstadoPermiso.VENCIDO
                 }
             });
             throw new BadRequestException('El permiso ha vencido');
@@ -519,7 +520,7 @@ export class PermisosService {
         return this.prisma.permiso.update({
             where: { id: permiso.id },
             data: {
-                estado: EstadoPermiso.UTILIZADO
+                estado: $Enums.EstadoPermiso.UTILIZADO
             }
         });
     }

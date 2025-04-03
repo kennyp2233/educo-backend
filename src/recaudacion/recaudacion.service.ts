@@ -106,7 +106,7 @@ export class RecaudacionService {
         return this.prisma.recaudacion.create({
             data: {
                 ...data,
-                estado: 'ACTIVA' // Estado inicial
+                estado: 'ABIERTA' // Estado inicial
             }
         });
     }
@@ -272,7 +272,7 @@ export class RecaudacionService {
             throw new NotFoundException(`Recaudación con ID ${data.recaudacionId} no encontrada`);
         }
 
-        if (recaudacion.estado !== 'ACTIVA') {
+        if (recaudacion.estado !== 'ABIERTA') {
             throw new BadRequestException('No se puede abonar a una recaudación que no está activa');
         }
 
@@ -334,7 +334,7 @@ export class RecaudacionService {
         }
 
         // Verificar que la recaudación está activa
-        if (abono.recaudacion.estado !== 'ACTIVA') {
+        if (abono.recaudacion.estado !== 'ABIERTA') {
             throw new BadRequestException('No se puede modificar un abono de una recaudación que no está activa');
         }
 
@@ -366,7 +366,7 @@ export class RecaudacionService {
         }
 
         // Verificar que la recaudación está activa
-        if (abono.recaudacion.estado !== 'ACTIVA') {
+        if (abono.recaudacion.estado !== 'ABIERTA') {
             throw new BadRequestException('No se puede aprobar un abono de una recaudación que no está activa');
         }
 
@@ -400,7 +400,7 @@ export class RecaudacionService {
         }
 
         // Verificar que la recaudación está activa
-        if (abono.recaudacion.estado !== 'ACTIVA') {
+        if (abono.recaudacion.estado !== 'ABIERTA') {
             throw new BadRequestException('No se puede rechazar un abono de una recaudación que no está activa');
         }
 

@@ -19,7 +19,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { PermisosService } from './permisos.service';
 import { CreatePermisoDto, TipoPermiso } from './dto/create-permiso.dto';
-import { UpdatePermisoDto, EstadoPermiso } from './dto/update-permiso.dto';
+import { UpdatePermisoDto } from './dto/update-permiso.dto';
 import { UsuariosService } from '../users/users.service';
 import { Request } from 'express';
 
@@ -50,7 +50,7 @@ export class PermisosController {
      * Obtener permisos por tipo
      */
     @Get('tipo/:tipo')
-    async findByTipo(@Param('tipo') tipo: string) {
+    async findByTipo(@Param('tipo') tipo: TipoPermiso) {
         return this.permisosService.findByTipo(tipo);
     }
 

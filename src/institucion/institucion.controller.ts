@@ -19,7 +19,7 @@ import { CreateCursoDto } from './dto/create-curso.dto';
 import { UpdateCursoDto } from './dto/update-curso.dto';
 
 @Controller('instituciones')
-@UseGuards(AuthGuard('jwt'))
+//@UseGuards(AuthGuard('jwt'))
 export class InstitucionController {
     constructor(private readonly institucionService: InstitucionService) { }
 
