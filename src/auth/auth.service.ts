@@ -96,9 +96,7 @@ export class AuthService {
         }
     }
 
-    /**
-     * Registrar nuevo usuario
-     */
+    // src/auth/auth.service.ts - Función register modificada
     async register(registerDto: RegisterDto): Promise<any> {
         try {
             // Verificar si el email ya existe
@@ -138,95 +136,20 @@ export class AuthService {
                     throw new BadRequestException(`Rol '${registerDto.role}' no encontrado`);
                 }
 
-                // 3. Asignar rol al usuario
+                // 3. Asignar rol al usuario con estado PENDIENTE
+                // Almacenamos los datos del perfil en el campo comentarios como JSON para usarlos
+                // cuando se apruebe el rol
                 await prisma.usuarioRol.create({
                     data: {
                         usuarioId: usuario.id,
                         rolId: rol.id,
                         estadoAprobacion: 'PENDIENTE',
-                        cursoId: registerDto.perfilData?.cursoId
+                        cursoId: registerDto.perfilData?.cursoId,
+                        comentarios: registerDto.perfilData ? JSON.stringify(registerDto.perfilData) : null
                     },
                 });
 
-                // 4. Crear perfil específico según rol
-                switch (registerDto.role.toLowerCase()) {
-                    case 'padre':
-                    case 'padre_familia':
-                        if (registerDto.perfilData) {
-                            await prisma.padre.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    direccion: registerDto.perfilData.direccion || 'Por completar',
-                                    telefono: registerDto.perfilData.telefono || 'Por completar',
-                                },
-                            });
-                        } else {
-                            await prisma.padre.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    direccion: 'Por completar',
-                                    telefono: 'Por completar',
-                                },
-                            });
-                        }
-                        break;
-
-                    case 'estudiante':
-                        if (registerDto.perfilData) {
-                            await prisma.estudiante.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    cursoId: registerDto.perfilData.cursoId || await this.getDefaultCursoId(),
-                                    grado: registerDto.perfilData.grado || 'Por asignar',
-                                },
-                            });
-                        } else {
-                            await prisma.estudiante.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    cursoId: await this.getDefaultCursoId(),
-                                    grado: 'Por asignar',
-                                },
-                            });
-                        }
-                        break;
-
-                    case 'profesor':
-                        if (registerDto.perfilData) {
-                            await prisma.profesor.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    especialidad: registerDto.perfilData.especialidad || 'Por completar',
-                                },
-                            });
-                        } else {
-                            await prisma.profesor.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    especialidad: 'Por completar',
-                                },
-                            });
-                        }
-                        break;
-
-                    case 'tesorero':
-                        if (registerDto.perfilData) {
-                            await prisma.tesorero.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    cursoId: registerDto.perfilData.cursoId || await this.getDefaultCursoId(),
-                                },
-                            });
-                        } else {
-                            await prisma.tesorero.create({
-                                data: {
-                                    usuarioId: usuario.id,
-                                    cursoId: await this.getDefaultCursoId(),
-                                },
-                            });
-                        }
-                        break;
-                }
+                // 4. Ya NO creamos el perfil específico aquí - Se creará cuando se apruebe el rol
 
                 return usuario;
             });

@@ -151,17 +151,57 @@ export class AprobacionesService {
         if (!padre) {
             throw new NotFoundException(`Padre con ID ${data.padreId} no encontrado`);
         }
-
         // Verificar que el estudiante existe
-        const estudiante = await this.prisma.estudiante.findUnique({
+        let estudiante = await this.prisma.estudiante.findUnique({
             where: { usuarioId: data.estudianteId },
             include: {
                 curso: true
             }
         });
 
+
         if (!estudiante) {
-            throw new NotFoundException(`Estudiante con ID ${data.estudianteId} no encontrado`);
+            const estudianteRol = await this.prisma.usuarioRol.findFirst({
+                where: {
+                    usuarioId: data.estudianteId,
+                    rol: {
+                        nombre: 'estudiante'
+                    }
+                },
+                include: {
+                    rol: true,
+                    curso: true
+                }
+            });
+            if (!estudianteRol) {
+                throw new NotFoundException(`Estudiante con ID ${data.estudianteId} no encontrado`);
+            }
+
+            await this.prisma.usuarioRol.update({
+                where: {
+                    usuarioId_rolId: {
+                        usuarioId: data.estudianteId,
+                        rolId: estudianteRol.rol.id
+                    }
+                },
+                data: {
+                    estadoAprobacion: 'APROBADO',
+                    aprobadorId: data.padreId,
+                    fechaAprobacion: new Date()
+                }
+            });
+
+            // Crear el registro de estudiante usando los datos del rol de estudiante
+            estudiante = await this.prisma.estudiante.create({
+                data: {
+                    usuarioId: data.estudianteId,
+                    cursoId: estudianteRol.curso?.id || null, // Usar el curso del rol si existe
+                    grado: 'Por asignar'
+                },
+                include: {
+                    curso: true
+                }
+            });
         }
 
         // Verificar si ya existe una vinculación
@@ -243,9 +283,7 @@ export class AprobacionesService {
         return permiso;
     }
 
-    /**
-     * Resolver una aprobación de rol
-     */
+    // src/aprobaciones/aprobaciones.service.ts - Función resolverAprobacionRol modificada
     async resolverAprobacionRol(
         usuarioId: string,
         rolId: number,
@@ -282,35 +320,99 @@ export class AprobacionesService {
 
         // Actualizar el estado de la aprobación
         const nuevoEstado = dto.aprobado ? 'APROBADO' : 'RECHAZADO';
-        const rolActualizado = await this.prisma.usuarioRol.update({
-            where: {
-                usuarioId_rolId: {
-                    usuarioId,
-                    rolId
+
+        // Usamos una transacción para actualizar el estado del rol y crear el perfil específico si es aprobado
+        return this.prisma.executeTransaction(async (prisma) => {
+            // 1. Actualizar estado del rol
+            const rolActualizado = await prisma.usuarioRol.update({
+                where: {
+                    usuarioId_rolId: {
+                        usuarioId,
+                        rolId
+                    }
+                },
+                data: {
+                    estadoAprobacion: nuevoEstado,
+                    aprobadorId,
+                    fechaAprobacion: new Date(),
+                    comentarios: dto.comentarios || usuarioRol.comentarios // Mantener los datos del perfil si no hay comentarios nuevos
+                },
+                include: {
+                    rol: true
                 }
-            },
-            data: {
-                estadoAprobacion: nuevoEstado,
-                aprobadorId,
-                fechaAprobacion: new Date(),
-                comentarios: dto.comentarios
-            },
-            include: {
-                rol: true
+            });
+
+            // 2. Si fue aprobado, crear el perfil específico según el rol
+            if (dto.aprobado) {
+                // Intentar parsear los datos del perfil que se guardaron en el campo comentarios
+                let perfilData = {};
+                try {
+                    // Si hay datos del perfil almacenados como JSON, los recuperamos
+                    if (usuarioRol.comentarios && usuarioRol.comentarios.startsWith('{')) {
+                        perfilData = JSON.parse(usuarioRol.comentarios);
+                    }
+                } catch (e) {
+                    this.logger.warn(`Error al parsear datos del perfil para usuario ${usuarioId}: ${e.message}`);
+                }
+
+                // Crear perfil según el tipo de rol
+                const rolNombre = usuarioRol.rol.nombre.toLowerCase();
+
+                if (rolNombre === 'padre' || rolNombre === 'padre_familia') {
+                    await prisma.padre.create({
+                        data: {
+                            usuarioId,
+                            direccion: perfilData['direccion'] || 'Por completar',
+                            telefono: perfilData['telefono'] || 'Por completar'
+                        }
+                    });
+                } else if (rolNombre === 'estudiante') {
+                    const cursoId = usuarioRol.cursoId || await this.getDefaultCursoId(prisma);
+                    await prisma.estudiante.create({
+                        data: {
+                            usuarioId,
+                            cursoId,
+                            grado: perfilData['grado'] || 'Por asignar'
+                        }
+                    });
+                } else if (rolNombre === 'profesor') {
+                    await prisma.profesor.create({
+                        data: {
+                            usuarioId,
+                            especialidad: perfilData['especialidad'] || 'Por completar'
+                        }
+                    });
+                } else if (rolNombre === 'tesorero') {
+                    const cursoId = usuarioRol.cursoId || await this.getDefaultCursoId(prisma);
+                    await prisma.tesorero.create({
+                        data: {
+                            usuarioId,
+                            cursoId
+                        }
+                    });
+                }
             }
-        });
 
-        // Notificar al usuario sobre la resolución
-        await this.notificacionService.create({
-            usuarioReceptorId: usuarioId,
-            titulo: `Rol ${usuarioRol.rol.nombre} ${nuevoEstado.toLowerCase()}`,
-            mensaje: dto.comentarios || `Su solicitud para el rol ${usuarioRol.rol.nombre} ha sido ${nuevoEstado.toLowerCase()}`,
-            tipo: dto.aprobado ? 'EXITO' : 'ALERTA'
-        });
+            // 3. Notificar al usuario sobre la resolución
+            await this.notificacionService.create({
+                usuarioReceptorId: usuarioId,
+                titulo: `Rol ${usuarioRol.rol.nombre} ${nuevoEstado.toLowerCase()}`,
+                mensaje: dto.comentarios || `Su solicitud para el rol ${usuarioRol.rol.nombre} ha sido ${nuevoEstado.toLowerCase()}`,
+                tipo: dto.aprobado ? 'EXITO' : 'ALERTA'
+            });
 
-        return rolActualizado;
+            return rolActualizado;
+        });
     }
 
+    // Método auxiliar para obtener un curso predeterminado
+    private async getDefaultCursoId(prisma: any): Promise<number> {
+        const curso = await prisma.curso.findFirst();
+        if (!curso) {
+            throw new BadRequestException('No hay cursos disponibles en el sistema');
+        }
+        return curso.id;
+    }
     /**
      * Resolver una vinculación padre-estudiante
      */
