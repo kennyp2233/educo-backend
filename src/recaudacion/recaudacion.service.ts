@@ -430,4 +430,61 @@ export class RecaudacionService {
             throw new BadRequestException(`Error al eliminar abono: ${error.message}`);
         }
     }
+
+    /**
+ * Crear un abono directo desde la vista de recaudaciones
+ * Método simplificado para padres que crean abonos directamente
+ */
+    async crearAbonoDirecto(
+        recaudacionId: number,
+        padreId: string,
+        estudianteId: string,
+        monto: number,
+        comprobante?: string
+    ): Promise<Abono> {
+        // Verificar que la recaudación existe y está activa
+        const recaudacion = await this.prisma.recaudacion.findUnique({
+            where: { id: recaudacionId }
+        });
+
+        if (!recaudacion) {
+            throw new NotFoundException(`Recaudación con ID ${recaudacionId} no encontrada`);
+        }
+
+        if (recaudacion.estado !== 'ABIERTA') {
+            throw new BadRequestException('No se puede abonar a una recaudación que no está activa');
+        }
+
+        // Verificar que el padre y estudiante están vinculados
+        const relacion = await this.prisma.padreEstudiante.findUnique({
+            where: {
+                padreId_estudianteId: {
+                    padreId,
+                    estudianteId
+                }
+            }
+        });
+
+        if (!relacion || relacion.estadoVinculacion !== 'APROBADO') {
+            throw new BadRequestException('El estudiante no está correctamente vinculado a este padre');
+        }
+
+        // Verificar que el monto sea positivo
+        if (monto <= 0) {
+            throw new BadRequestException('El monto debe ser mayor a cero');
+        }
+
+        // Crear el abono
+        return this.prisma.abono.create({
+            data: {
+                recaudacionId,
+                padreId,
+                estudianteId,
+                monto,
+                comprobante,
+                fechaPago: new Date(),
+                estado: 'PENDIENTE'
+            }
+        });
+    }
 }

@@ -435,4 +435,174 @@ export class PadresService {
             throw error;
         }
     }
+
+    /**
+     * Obtiene todas las recaudaciones activas organizadas por hijo y curso
+     */
+    async obtenerRecaudacionesPorHijo(padreId: string) {
+        try {
+            // Verificar que el padre existe
+            const padre = await this.prisma.padre.findUnique({
+                where: { usuarioId: padreId }
+            });
+
+            if (!padre) {
+                throw new NotFoundException(`Padre con ID ${padreId} no encontrado`);
+            }
+
+            // Obtener todos los hijos del padre con vinculación aprobada
+            const hijos = await this.prisma.padreEstudiante.findMany({
+                where: {
+                    padreId,
+                    estadoVinculacion: 'APROBADO'
+                },
+                include: {
+                    estudiante: {
+                        include: {
+                            usuario: true,
+                            curso: {
+                                include: {
+                                    institucion: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (hijos.length === 0) {
+                return {
+                    totalPendiente: 0,
+                    totalAbonado: 0,
+                    hayRecaudacionesActivas: false,
+                    hijos: []
+                };
+            }
+
+            // Obtener IDs de estudiantes
+            const estudianteIds = hijos.map(h => h.estudianteId);
+
+            // Obtener IDs de cursos de los estudiantes
+            const cursoIds = [...new Set(hijos.map(h => h.estudiante.cursoId))];
+
+            // Obtener todas las recaudaciones activas para estos cursos
+            const recaudacionesActivas = await this.prisma.recaudacion.findMany({
+                where: {
+                    estado: 'ABIERTA',
+                    tesorero: {
+                        cursoId: {
+                            in: cursoIds
+                        }
+                    }
+                },
+                include: {
+                    tesorero: {
+                        include: {
+                            curso: true
+                        }
+                    }
+                }
+            });
+
+            // Obtener todos los abonos realizados por este padre para estas recaudaciones
+            const abonos = await this.prisma.abono.findMany({
+                where: {
+                    padreId,
+                    estudianteId: {
+                        in: estudianteIds
+                    },
+                    recaudacionId: {
+                        in: recaudacionesActivas.map(r => r.id)
+                    }
+                }
+            });
+
+            // Calcular totales generales
+            let totalPendiente = 0;
+            let totalAbonado = 0;
+
+            // Organizar datos por hijo -> curso -> recaudaciones
+            const hijosConRecaudaciones = [];
+
+            for (const hijoVinculo of hijos) {
+                const estudiante = hijoVinculo.estudiante;
+                const curso = estudiante.curso;
+
+                // Filtrar recaudaciones para este curso
+                const recaudacionesCurso = recaudacionesActivas.filter(
+                    r => r.tesorero.cursoId === curso.id
+                );
+
+                if (recaudacionesCurso.length === 0) {
+                    continue;
+                }
+
+                const recaudacionesEstudiante = [];
+
+                for (const recaudacion of recaudacionesCurso) {
+                    // Buscar abonos de este estudiante para esta recaudación
+                    const abonosEstudiante = abonos.filter(
+                        a => a.estudianteId === estudiante.usuarioId && a.recaudacionId === recaudacion.id
+                    );
+
+                    // Calcular monto abonado (solo de abonos aprobados)
+                    const montoAbonado = abonosEstudiante
+                        .filter(a => a.estado === 'APROBADO')
+                        .reduce((sum, abono) => sum + abono.monto, 0);
+
+                    // Calcular monto pendiente
+                    const montoPendiente = recaudacion.montoTotal - montoAbonado;
+
+                    // Actualizar totales generales
+                    totalPendiente += montoPendiente;
+                    totalAbonado += montoAbonado;
+
+                    // Añadir recaudación con sus detalles
+                    recaudacionesEstudiante.push({
+                        id: recaudacion.id,
+                        titulo: recaudacion.titulo,
+                        descripcion: recaudacion.descripcion,
+                        montoTotal: recaudacion.montoTotal,
+                        montoAbonado,
+                        montoPendiente,
+                        fechaCierre: recaudacion.fechaCierre,
+                        estado: recaudacion.estado,
+                        abonos: abonosEstudiante
+                    });
+                }
+
+                // Solo añadir el hijo si tiene recaudaciones
+                if (recaudacionesEstudiante.length > 0) {
+                    hijosConRecaudaciones.push({
+                        estudiante: {
+                            id: estudiante.usuarioId,
+                            nombre: estudiante.usuario.nombre,
+                            grado: estudiante.grado
+                        },
+                        curso: {
+                            id: curso.id,
+                            nombre: curso.nombre,
+                            paralelo: curso.paralelo,
+                            anioLectivo: curso.anioLectivo,
+                            institucion: {
+                                id: curso.institucion.id,
+                                nombre: curso.institucion.nombre
+                            }
+                        },
+                        recaudaciones: recaudacionesEstudiante
+                    });
+                }
+            }
+            console.log('hijosConRecaudaciones', hijosConRecaudaciones);
+            return {
+                totalPendiente,
+                totalAbonado,
+                hayRecaudacionesActivas: hijosConRecaudaciones.length > 0,
+                hijos: hijosConRecaudaciones
+            };
+        } catch (error) {
+            this.logger.error(`Error al obtener recaudaciones por hijo del padre ${padreId}: ${error.message}`);
+            throw error;
+        }
+    }
 }

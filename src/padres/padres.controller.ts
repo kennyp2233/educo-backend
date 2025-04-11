@@ -143,4 +143,17 @@ export class PadresController {
             throw new BadRequestException(`Error al obtener vinculaciones pendientes: ${error.message}`);
         }
     }
+
+    @Get(':padreId/recaudaciones')
+    async obtenerRecaudacionesPorHijo(@Param('padreId') padreId: string) {
+        try {
+            return await this.padresService.obtenerRecaudacionesPorHijo(padreId);
+        } catch (error) {
+            this.logger.error(`Error al obtener recaudaciones del padre ${padreId}: ${error.message}`);
+            if (error instanceof NotFoundException) {
+                throw error;
+            }
+            throw new BadRequestException(`Error al obtener recaudaciones: ${error.message}`);
+        }
+    }
 }

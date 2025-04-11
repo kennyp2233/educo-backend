@@ -17,6 +17,7 @@ import { CreateRecaudacionDto } from './dto/create-recaudacion.dto';
 import { UpdateRecaudacionDto } from './dto/update-recaudacion.dto';
 import { CreateAbonoDto } from './dto/create-abono.dto';
 import { UpdateAbonoDto } from './dto/update-abono.dto';
+import { AbonoDirectoDto } from './dto/abono-directo.dto';
 
 @Controller('recaudaciones')
 @UseGuards(AuthGuard('jwt'))
@@ -90,6 +91,18 @@ export class RecaudacionController {
         return this.recaudacionService.createAbono(createAbonoDto);
     }
 
+    @Post('abono-directo')
+    createAbonoDirecto(
+        @Body(new ValidationPipe()) abonoDto: AbonoDirectoDto
+    ) {
+        return this.recaudacionService.crearAbonoDirecto(
+            abonoDto.recaudacionId,
+            abonoDto.padreId,
+            abonoDto.estudianteId,
+            abonoDto.monto,
+            abonoDto.comprobante
+        );
+    }
     @Patch('abonos/:id')
     updateAbono(
         @Param('id', ParseIntPipe) id: number,
